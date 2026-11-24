@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         抖音网页版精简版
 // @namespace    https://github.com/Teristans/pure-live-plus
-// @version      1.0.0
-// @description  精简抖音网页版：去顶栏与左侧栏、过滤广告与弹窗，搜索栏移至左下角；保留播放控制条、设置、点赞、评论、作者头像等互动元素。
+// @version      1.1.0
+// @description  精简抖音网页版：去顶栏与左侧栏、过滤广告与弹窗，搜索栏移至左下角；左下角悬浮频道导航可切换推荐/精选/关注/朋友，默认直达推荐页；保留播放控制条、设置、点赞、评论、作者头像等互动元素。
 // @author       Teristans
 // @license      GPL-3.0-or-later
 // @homepage     https://github.com/Teristans/pure-live-plus
@@ -30,6 +30,20 @@
 
   var SEARCH_PATH = "https://www.douyin.com/search/";
   var SEARCH_QUERY = "?type=general";
+  // 抖音首页：根路径 "/" 是精选，"/?recommend=1" 才是推荐流。
+  var RECOMMEND_URL = "https://www.douyin.com/?recommend=1";
+  var CHANNEL_MANUAL_KEY = "douyin-pure-channel-manual";
+
+  // 打开根路径时是否自动进入推荐页。若想保留"打开即精选"，改成 false 即可，悬浮频道导航不受影响。
+  var AUTO_RECOMMEND = true;
+
+  // 替代被隐藏的左侧栏频道入口；用普通链接跳转，不依赖抖音内部路由事件。
+  var CHANNELS = [
+    { id: "recommend", label: "推荐", href: RECOMMEND_URL },
+    { id: "jingxuan", label: "精选", href: "https://www.douyin.com/" },
+    { id: "follow", label: "关注", href: "https://www.douyin.com/follow" },
+    { id: "friend", label: "朋友", href: "https://www.douyin.com/friend" },
+  ];
 
   // 精简样式：隐藏项集中在此，便于维护；被保留的播放/互动元素不出现在这里。
   var PURE_STYLE = [
@@ -123,6 +137,37 @@
     "  font-size: 13px;",
     "  cursor: pointer;",
     "}",
+
+    /* ---------- 5. 左下角频道导航（替代被隐藏的左侧栏） ---------- */
+    ".douyin-pure-channels {",
+    "  position: fixed;",
+    "  left: 16px;",
+    "  bottom: 62px;",
+    "  z-index: 2147483000;",
+    "  display: flex;",
+    "  gap: 6px;",
+    "  opacity: 0.45;",
+    "  transition: opacity 0.2s ease;",
+    "}",
+    ".douyin-pure-channels:hover {",
+    "  opacity: 1;",
+    "}",
+    ".douyin-pure-channels a {",
+    "  display: inline-block;",
+    "  padding: 4px 10px;",
+    "  color: #fff;",
+    "  background: rgba(0, 0, 0, 0.42);",
+    "  border: 1px solid rgba(255, 255, 255, 0.2);",
+    "  border-radius: 12px;",
+    "  font-size: 12px;",
+    "  line-height: 1.4;",
+    "  text-decoration: none;",
+    "}",
+    '.douyin-pure-channels a[aria-current="page"] {',
+    "  background: rgba(255, 255, 255, 0.88);",
+    "  color: #000;",
+    "  border-color: rgba(255, 255, 255, 0.88);",
+    "}",
   ].join("\n");
 
   function injectStyle(css) {
@@ -166,9 +211,68 @@
     (document.body || document.documentElement).appendChild(form);
   }
 
+  function markManualChannel() {
+    try {
+      window.sessionStorage.setItem(CHANNEL_MANUAL_KEY, "1");
+    } catch (e) {
+      /* 隐私模式等禁用 storage 的场景静默跳过，不影响跳转 */
+    }
+  }
+
+  function currentChannelId() {
+    var href = String(window.location.href || "");
+    if (/\/follow(?:[/?#]|$)/.test(href)) return "follow";
+    if (/\/friend(?:[/?#]|$)/.test(href)) return "friend";
+    if (/[?&]recommend=1(?:[&#]|$)/.test(href)) return "recommend";
+    return "jingxuan";
+  }
+
+  // 只在纯根路径时考虑自动跳推荐；带 query 的视频页/其他页一律不碰。
+  function isBareHome() {
+    var href = String(window.location.href || "");
+    return /^https?:\/\/www\.douyin\.com\/?(?:#.*)?$/.test(href);
+  }
+
+  function maybeAutoRecommend() {
+    if (!AUTO_RECOMMEND || !isBareHome()) return;
+    var manual = false;
+    try {
+      manual = window.sessionStorage.getItem(CHANNEL_MANUAL_KEY) === "1";
+    } catch (e) {
+      /* 读不到 storage 时按未手动选择处理 */
+    }
+    if (manual) return;
+    if (typeof window.location.replace === "function") {
+      window.location.replace(RECOMMEND_URL);
+    } else {
+      window.location.href = RECOMMEND_URL;
+    }
+  }
+
+  function mountChannels() {
+    if (document.getElementById("douyin-pure-channels")) return;
+    var nav = document.createElement("nav");
+    nav.id = "douyin-pure-channels";
+    nav.className = "douyin-pure-channels";
+    nav.setAttribute("aria-label", "频道切换");
+    var active = currentChannelId();
+    CHANNELS.forEach(function (item) {
+      var link = document.createElement("a");
+      link.href = item.href;
+      link.textContent = item.label;
+      link.setAttribute("data-channel", item.id);
+      if (item.id === active) link.setAttribute("aria-current", "page");
+      link.addEventListener("click", markManualChannel);
+      nav.appendChild(link);
+    });
+    (document.body || document.documentElement).appendChild(nav);
+  }
+
   function boot() {
     injectStyle(PURE_STYLE);
     mountSearch();
+    mountChannels();
+    maybeAutoRecommend();
   }
 
   if (document.readyState === "loading") {
@@ -182,5 +286,11 @@
     style: PURE_STYLE,
     buildSearchUrl: buildSearchUrl,
     mountSearch: mountSearch,
+    mountChannels: mountChannels,
+    currentChannelId: currentChannelId,
+    isBareHome: isBareHome,
+    maybeAutoRecommend: maybeAutoRecommend,
+    channels: CHANNELS,
+    recommendUrl: RECOMMEND_URL,
   };
 })();
