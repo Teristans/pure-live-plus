@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         抖音网页版精简版
 // @namespace    https://github.com/Teristans/pure-live-plus
-// @version      1.3.0
-// @description  精简抖音网页版：去顶栏与左侧栏、过滤广告与弹窗，搜索栏移至左下角；左下角悬浮频道导航通过自适应定位点击抖音原生入口切换推荐/精选/关注/朋友；保留播放控制条、设置、点赞、评论、作者头像等互动元素。
+// @version      1.4.0
+// @description  精简抖音网页版：去顶栏与左侧栏、过滤广告与弹窗，搜索/频道菜单移至左上角；智能把视频清晰度调到 1080；保留播放控制条、设置、点赞、评论、作者头像等互动元素。
 // @author       Teristans
 // @license      GPL-3.0-or-later
 // @homepage     https://github.com/Teristans/pure-live-plus
@@ -30,7 +30,12 @@
  *      b. data-e2e 语义属性匹配
  *      c. 历史 class 兜底
  *    找到后调用原生 element.click() 走抖音自身路由；只有完全找不到入口时才回退 URL。
- * 4) 暴露 diagnose() 供排查：在页面控制台运行 DouyinPure.diagnose() 打印真实 DOM 候选。
+ * 4) 清晰度智能调到 1080：双保险——(a) 页面播放器读 sessionStorage["MANUAL_SWITCH"]，
+ *    写入 1080P 档位 JSON 并轮询保持约 21s，不依赖菜单 DOM；(b) 若清晰度菜单
+ *    [data-e2e="quality-selector"] 可见，按文本智能选 1080（没有 1080 就选不超过
+ *    1080 的最高档）。用户手动切换后本脚本不再干预。
+ * 5) 搜索栏与频道菜单固定在左上角（替代原左下角布局）。
+ * 6) 暴露 diagnose() 供排查：在页面控制台运行 DouyinPure.diagnose() 打印真实 DOM 候选。
  */
 (function () {
   "use strict";
@@ -44,6 +49,36 @@
 
   // 打开首页时是否自动进入推荐流。改成 false 可保留「打开即精选」。
   var AUTO_RECOMMEND = true;
+
+  // 是否智能把视频清晰度调到 1080。改成 false 可关闭。
+  var AUTO_QUALITY_1080 = true;
+
+  // 抖音播放器读取的清晰度手动档位 key（实测）。写入后播放器据此切换。
+  var QUALITY_STORAGE_KEY = "MANUAL_SWITCH";
+  var QUALITY_MANUAL_KEY = "douyin-pure-quality-manual-v14";
+
+  // 1080P 档位对象（来自抖音实测档位表：gearName "高清 1080P", qualityType 2）。
+  var GEAR_1080 = {
+    done: 1,
+    gearClarity: "5",
+    gearName: "高清 1080P",
+    gearType: 1,
+    qualityType: 2,
+  };
+
+  // 清晰度档位识别规则：rank 越大画质越高；target=1080 时优先选 <=1080 的最高档。
+  // match 用正则从档位文本里提取档位值（P 前的数字，或 2K/4K）。
+  var QUALITY_GEARS = [
+    { id: "smart", test: /智能|自动/i, height: 0 },
+    { id: "fast", test: /极速|流畅/i, height: 0 },
+    { id: "360", test: /360/i, height: 360 },
+    { id: "480", test: /480/i, height: 480 },
+    { id: "540", test: /540/i, height: 540 },
+    { id: "720", test: /720/i, height: 720 },
+    { id: "1080", test: /1080/i, height: 1080 },
+    { id: "2k", test: /2k|1440/i, height: 1440 },
+    { id: "4k", test: /4k|2160/i, height: 2160 },
+  ];
 
   // label 用于文本精确匹配（最稳）；e2e 用于语义属性匹配；classHints 仅作兜底。
   var CHANNELS = [
@@ -112,11 +147,11 @@
     "  display: none !important;",
     "}",
 
-    /* ---------- 4. 左下角悬浮搜索栏 ---------- */
+    /* ---------- 4. 左上角悬浮搜索栏 ---------- */
     ".douyin-pure-search {",
     "  position: fixed;",
     "  left: 16px;",
-    "  bottom: 18px;",
+    "  top: 18px;",
     "  z-index: 2147483000;",
     "  display: flex;",
     "  align-items: center;",
@@ -158,11 +193,11 @@
     "  cursor: pointer;",
     "}",
 
-    /* ---------- 5. 左下角频道导航（替代被隐藏的左侧栏） ---------- */
+    /* ---------- 5. 左上角频道导航（替代被隐藏的左侧栏） ---------- */
     ".douyin-pure-channels {",
     "  position: fixed;",
     "  left: 16px;",
-    "  bottom: 62px;",
+    "  top: 62px;",
     "  z-index: 2147483000;",
     "  display: flex;",
     "  gap: 6px;",
@@ -523,6 +558,138 @@
     (document.body || document.documentElement).appendChild(nav);
   }
 
+  /* ==================== 清晰度智能 1080 ==================== */
+
+  // 页面 sessionStorage（油猴沙箱下 window.sessionStorage 指向页面同源存储）。
+  function getPageStorage() {
+    try {
+      return window.sessionStorage || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // 用户是否已手动改过清晰度（手动后本脚本不再干预）。
+  function isQualityManual() {
+    return storageGet(QUALITY_MANUAL_KEY) === "1";
+  }
+
+  // 从档位文本解析档位（如"高清 1080P" -> 1080 档）。
+  function parseGearFromText(text) {
+    var str = String(text || "");
+    for (var i = 0; i < QUALITY_GEARS.length; i++) {
+      if (QUALITY_GEARS[i].test.test(str)) return QUALITY_GEARS[i];
+    }
+    return null;
+  }
+
+  // 在不超过 1080 的档位里选最高的一档（智能：视频无 1080 时选最接近且不超 1080 的）。
+  function pickBestQualityItem(items) {
+    var best = null;
+    var bestHeight = -1;
+    for (var i = 0; i < items.length; i++) {
+      var text = items[i].textContent || "";
+      var gear = parseGearFromText(text);
+      if (!gear) continue;
+      if (gear.height > 1080) continue; // 跳过 2K/4K，避免超出目标
+      if (gear.height > bestHeight) {
+        bestHeight = gear.height;
+        best = { el: items[i], gear: gear, text: String(text).trim() };
+      }
+    }
+    return best;
+  }
+
+  // 写 MANUAL_SWITCH = 1080 档位 JSON，供抖音播放器读取切换。
+  function writeQualityStorage() {
+    var store = getPageStorage();
+    if (!store) return false;
+    try {
+      store.setItem(QUALITY_STORAGE_KEY, JSON.stringify(GEAR_1080));
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  var qualityTimer = null;
+  var qualityWrites = 0;
+  var QUALITY_MAX_WRITES = 84; // 250ms * 84 ≈ 21s，覆盖播放器延迟读取与视频切换
+
+  // 确保 1080：立即写一次，然后有限次数轮询保持；用户手动选择后停止。
+  function ensureQuality1080(force) {
+    if (!AUTO_QUALITY_1080) return "disabled";
+    if (isQualityManual() && !force) return "manual";
+    writeQualityStorage();
+    // 菜单若可见，按文本智能点选（1080 或不超过 1080 的最高档），双保险。
+    var pick = pickQualityFromMenu();
+    if (pick) {
+      try { pick.el.click(); } catch (e) { /* 忽略 */ }
+    }
+    if (qualityTimer) return "running";
+    qualityWrites = 0;
+    qualityTimer = setInterval(function () {
+      if (isQualityManual()) {
+        clearInterval(qualityTimer);
+        qualityTimer = null;
+        return;
+      }
+      qualityWrites++;
+      writeQualityStorage();
+      if (qualityWrites >= QUALITY_MAX_WRITES) {
+        clearInterval(qualityTimer);
+        qualityTimer = null;
+      }
+    }, 250);
+    return "started";
+  }
+
+  // 从可见的清晰度菜单里找最佳档位元素（按文本匹配，不依赖 class）。
+  function pickQualityFromMenu() {
+    var selectors = [
+      '[data-e2e="quality-selector"] > div',
+      '.QualitySwitchNewPlugin [data-e2e="quality-selector"] > div',
+      '.xgplayer-playclarity-setting [class*="item"]',
+    ];
+    for (var s = 0; s < selectors.length; s++) {
+      var found = null;
+      try { found = document.querySelectorAll(selectors[s]); } catch (e) { continue; }
+      if (found && found.length) {
+        var pick = pickBestQualityItem(found);
+        if (pick) return pick;
+      }
+    }
+    return null;
+  }
+
+  // 用户用鼠标操作清晰度菜单时打标记，脚本随即停止写入，保证手动优先。
+  function watchManualQuality() {
+    function onPointerDown(event) {
+      try {
+        var target = event.target;
+        if (!target || !target.closest) return;
+        if (target.closest('[data-e2e="quality-selector"]') ||
+            target.closest(".xgplayer-playclarity-setting")) {
+          storageSet(QUALITY_MANUAL_KEY, "1");
+          if (qualityTimer) {
+            clearInterval(qualityTimer);
+            qualityTimer = null;
+          }
+          log("user manually changed quality; auto 1080 disabled this session");
+        }
+      } catch (e) { /* 忽略 */ }
+    }
+    document.addEventListener("mousedown", onPointerDown, true);
+    document.addEventListener("pointerdown", onPointerDown, true);
+  }
+
+  function stopQuality() {
+    if (qualityTimer) {
+      clearInterval(qualityTimer);
+      qualityTimer = null;
+    }
+  }
+
   /* ==================== 诊断工具 ==================== */
 
   function describe(el) {
@@ -548,6 +715,15 @@
       channelCandidates: {},
       textCandidates: [],
       e2eSamples: [],
+      quality: {
+        autoEnabled: AUTO_QUALITY_1080,
+        manualFlag: isQualityManual(),
+        storedManualSwitch: (function () {
+          var store = getPageStorage();
+          try { return store ? store.getItem(QUALITY_STORAGE_KEY) : null; } catch (e) { return null; }
+        })(),
+        menuBestPick: describe(pickQualityFromMenu() ? pickQualityFromMenu().el : null),
+      },
     };
     CHANNELS.forEach(function (ch) {
       report.channelCandidates[ch.id] = describe(findChannelEntry(ch.id));
@@ -572,6 +748,10 @@
     mountSearch();
     mountChannels();
     autoEnterRecommend();
+    if (AUTO_QUALITY_1080) {
+      watchManualQuality();
+      ensureQuality1080(false);
+    }
   }
 
   if (document.readyState === "loading") {
@@ -594,13 +774,23 @@
     findChannelEntry: findChannelEntry,
     findNativeTab: findChannelEntry, // 兼容旧调用
     diagnose: diagnose,
+    // 清晰度模块
+    writeQualityStorage: writeQualityStorage,
+    ensureQuality1080: ensureQuality1080,
+    pickQualityFromMenu: pickQualityFromMenu,
+    pickBestQualityItem: pickBestQualityItem,
+    parseGearFromText: parseGearFromText,
+    isQualityManual: isQualityManual,
+    gear1080: GEAR_1080,
     channels: CHANNELS,
     recommendUrl: RECOMMEND_URL,
+    autoQualityEnabled: AUTO_QUALITY_1080,
     _stopAuto: function () {
       if (autoTimer) {
         clearInterval(autoTimer);
         autoTimer = null;
       }
     },
+    _stopQuality: stopQuality,
   };
 })();
