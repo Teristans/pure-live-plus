@@ -58,6 +58,28 @@ function needsVerify(headers) {
 }
 
 /**
+ * 读取 XHR 响应体
+ * @returns {object|null|undefined} undefined 表示读不出来，不要据此判断成败
+ */
+function readXhrPayload(xhr) {
+  try {
+    if (xhr.responseType === "json") return xhr.response ?? null;
+    if (xhr.responseType === "" || xhr.responseType === "text") {
+      const text = typeof xhr.responseText === "string" ? xhr.responseText : "";
+      if (!text) return null;
+      try {
+        return JSON.parse(text);
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * 开始观测关注接口
  * @param {Window} win 页面窗口（document.defaultView，不用脚本沙箱里的 window）
  * @param {(result: object) => void} onResult 收到关注接口响应时回调
@@ -88,7 +110,10 @@ export function watchFollowApi(win, onResult) {
               ?.clone?.()
               .json?.()
               .then((payload) => onResult(toFollowResult(payload, { verifyRequired })))
-              .catch(() => onResult(toFollowResult(null, { verifyRequired })));
+              // 拿不到响应体就不下结论，免得把「读不到」当成「关注失败」
+              .catch(() => {
+                if (verifyRequired) onResult(toFollowResult(null, { verifyRequired }));
+              });
           } catch {
             /* 观测失败不影响页面 */
           }
@@ -122,13 +147,9 @@ export function watchFollowApi(win, onResult) {
         try {
           if (String(this.__pureLiveUrl || "").includes(FOLLOW_ENDPOINT)) {
             this.addEventListener("load", () => {
-              try {
-                const text = typeof this.responseText === "string" ? this.responseText : "";
-                const payload = text ? JSON.parse(text) : null;
-                onResult(toFollowResult(payload));
-              } catch {
-                onResult(toFollowResult(null));
-              }
+              const payload = readXhrPayload(this);
+              // undefined 表示响应体读不出来（如 arraybuffer），此时不下结论
+              if (payload !== undefined) onResult(toFollowResult(payload));
             });
           }
         } catch {

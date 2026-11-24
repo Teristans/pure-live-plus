@@ -9,7 +9,7 @@
 
 | 脚本 | 用途 | 版本 | 一键安装 |
 |---|---|---|---|
-| 纯净直播（修改自用版） | 斗鱼 / 虎牙 / B站 / 抖音**直播**精简、自动最高画质 | v5.3.1 | [安装](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v5.3.1/pure-live.user.js) |
+| 纯净直播（修改自用版） | 斗鱼 / 虎牙 / B站 / 抖音**直播**精简、自动最高画质 | v5.3.2 | [安装](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v5.3.2/pure-live.user.js) |
 | [抖音网页版精简版](./douyin-pure/README.md) | 抖音**网页版视频**精简、清晰度智能 1080、悬浮菜单在左上角 | v1.4.0 | [安装](https://github.com/Teristans/pure-live-plus/releases/download/douyin-pure-v1.4.0/douyin-pure.user.js) |
 
 Release 页：https://github.com/Teristans/pure-live-plus/releases
@@ -31,7 +31,7 @@ Release 页：https://github.com/Teristans/pure-live-plus/releases
   - **虎牙**：按 `iSortValue` 选择最高画质，解锁扫码限制（status=4），保留原画 `iBitRate=0`，通过 `unsafeWindow` 使用页面自身 jQuery；画质处理提前启动，避免播放器容器延迟创建时中断。
 - 构建配置固定 `vite` / `vitest` 版本，恢复正常生产构建。
 
-### v5.3.1
+### v5.3.2
 
 **修复抖音关注图标「点完变实心蓝、一秒后又弹回空心」**（`src/site/douyin/follow.js` + 新增 `src/site/douyin/follow-api.js`）
 
@@ -40,6 +40,7 @@ Release 页：https://github.com/Teristans/pure-live-plus/releases
 - 没拦到接口时，退一步用页面弹出的「关注成功 / 取消关注成功」提示作为证据。拿到证据后，图标在有效期内不再被刷旧的按钮文案带偏；换直播间（主播名变化）或再次点击，自动作废旧证据。
 - 失败不再装作没事：抖音返回错误、要求人工验证、或干脆没有响应，图标会退回真实状态，失败原因写进悬停提示，并点亮图标提示这次没成功。
 - 点击后的乐观状态最多保持 5 秒，等不到任何证据就退回真实状态。
+- 兼容 `responseType` 为 `json` 的 XHR；响应体读不出来（如 `arraybuffer`）时不下结论，不会把「读不到」误判成「关注失败」。
 
 ### v5.3.0
 
@@ -107,8 +108,8 @@ pnpm run test:all             # 以上全部
 
 **纯净直播（本脚本）**
 
-- 一键安装：[pure-live.user.js v5.3.1](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v5.3.1/pure-live.user.js)
-- Release 说明：[pure-live-v5.3.1](https://github.com/Teristans/pure-live-plus/releases/tag/pure-live-v5.3.1)
+- 一键安装：[pure-live.user.js v5.3.2](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v5.3.2/pure-live.user.js)
+- Release 说明：[pure-live-v5.3.2](https://github.com/Teristans/pure-live-plus/releases/tag/pure-live-v5.3.2)
 - 或自行构建：`pnpm install && pnpm build` 后导入 `dist/pure-live.user.js`
 - 安装后请只启用一份脚本（原版或本修改版二选一），避免重复执行
 
@@ -125,13 +126,13 @@ pnpm run test:all             # 以上全部
 
 - `@namespace` / `@homepage` / `@source`：`https://github.com/Teristans/pure-live-plus`
 - `@name`：纯净直播（pure live）修改自用版
-- `@version`：`5.3.1`
+- `@version`：`5.3.2`
 - `@license`：GPL-3.0-or-later
 
 当前发布状态：
 
 - [x] 已发布 Release：`pure-live-v5.2.16`（本脚本）、`douyin-pure-v1.4.0`（抖音脚本），下载入口已补入 README。
 - [x] `pure-live-v5.3.0` 已发布：tag `pure-live-v5.3.0` + Release 资产 `pure-live.user.js`（55.2 kB）。
-- [x] `pure-live-v5.3.1` 已发布：修复抖音关注状态回弹，README 安装链接已指向新地址。
+- [x] `pure-live-v5.3.2` 已发布：修复抖音关注状态回弹，README 安装链接已指向新地址。
 - [x] `LICENSE` 与原作者、修复贡献者署名完整保留。
-- [x] `@version` 从 `5.2.16` 升到 `5.3.1`（`5.3.0` 为首次发布的功能版本），作为本仓库的独立版本线。
+- [x] `@version` 从 `5.2.16` 升到 `5.3.2`（`5.3.0` 为首次发布的功能版本），作为本仓库的独立版本线。
