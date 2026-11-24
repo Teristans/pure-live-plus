@@ -15,19 +15,19 @@
  */
 
 /**
- * 抖音「关注 / 取关」接口的观测器
+ * 抖音「关注 / 取关」的数据来源
  *
- * 为什么需要它：页面上那个原生关注按钮点下去之后，按钮文案可能会先变成「已关注」
- * 再被直播间信息轮询刷回「关注」，只靠 DOM 文案判断会跟着来回跳。
- * 真正可靠的是接口返回：status_code 为 0 且 data.follow_status ∈ {1,2} 就是已关注。
+ * 两件事：
+ *   1. 旁听 `/webcast/user/relation/update/`：点击后抖音自己发的接口，返回 follow_status，
+ *      是「这次点击有没有生效」的唯一可信证据。按钮文案会被直播间信息轮询刷回旧值，不能当证据。
+ *   2. 主动请求 `/webcast/room/web/enter/`：进房响应里 `data.user` 就是当前主播，
+ *      `data.user.follow_info.follow_status` 就是「我 → 这个主播」的真实关系。
+ *      实测该接口免签名，带页面 cookie 直接 GET 就能拿到，所以不依赖页面自己什么时候发请求
+ *      ——脚本按 @run-at document-idle 执行，等它跑起来时进房请求早就发完了。
  *
- * 这里只做「旁听」：包一层 fetch / XHR，把响应复制一份读出来，原样返回给页面，
- * 不改请求、不改响应、出错一律吞掉，绝不因为观测失败影响页面本身。
+ * 只读，不修改任何请求与响应；观测失败一律吞掉，绝不影响页面本身。
  */
 const FOLLOW_ENDPOINT = "/webcast/user/relation/update/";
-
-// 进房接口：它的响应里带着「我和这个主播」的关注关系，是进入直播间时唯一可信的状态来源
-const ENTER_ENDPOINT_RE = /\/webcast\/room\/(?:web\/)?enter\//;
 
 // 抖音关注关系：0 未关注、1 已关注、2 互相关注、3 对方关注了我
 const FOLLOWING_STATUS = new Set([1, 2]);
@@ -54,6 +54,61 @@ export function toFollowResult(payload, { verifyRequired = false } = {}) {
   };
 }
 
+/**
+ * 从进房接口响应里读出「我 → 主播」的关注关系
+ *
+ * 只认主播那一份数据，不递归乱找：`data.similar_rooms[*].room.owner` 里同样带 follow_info，
+ * 那是「推荐直播间」的主播，把它们当成当前主播就会永远读到 0。
+ *
+ * @returns {number|undefined} follow_status，取不到返回 undefined
+ */
+export function readAnchorFollowStatus(payload) {
+  const data = payload?.data;
+  if (!data || typeof data !== "object") return undefined;
+  const owners = [data.user, data.data?.[0]?.owner, data.room?.owner];
+  for (const owner of owners) {
+    const status = owner?.follow_info?.follow_status;
+    if (typeof status === "number") return status;
+  }
+  return undefined;
+}
+
+/** 进房接口地址（web_rid 就是直播间 URL 末尾那串数字） */
+function enterUrl(webRid) {
+  const query = [
+    "aid=6383",
+    "app_name=douyin_web",
+    "live_id=1",
+    "device_platform=web",
+    "language=zh-CN",
+    "enter_from=web_live",
+    "cookie_enabled=true",
+    "screen_width=1920",
+    "screen_height=1080",
+    "browser_language=zh-CN",
+    "browser_platform=Win32",
+  ].join("&");
+  return `/webcast/room/web/enter/?${query}&web_rid=${encodeURIComponent(webRid)}`;
+}
+
+/**
+ * 主动问一次「我关注这个主播了吗」
+ * @param {Window} win 页面窗口（document.defaultView）
+ * @param {string} webRid 直播间 URL 末尾的号
+ * @returns {Promise<{fetched: boolean, status?: number}>} fetched 表示请求本身有没有成功
+ */
+export async function requestRoomFollowStatus(win, webRid) {
+  if (!win || typeof win.fetch !== "function" || !webRid) return { fetched: false };
+  try {
+    const res = await win.fetch(enterUrl(webRid), { credentials: "include" });
+    if (!res || res.ok === false) return { fetched: false };
+    const payload = await res.json();
+    return { fetched: true, status: readAnchorFollowStatus(payload) };
+  } catch {
+    return { fetched: false };
+  }
+}
+
 /** 响应头里出现验证标记，说明抖音要求人工验证，关注不会生效 */
 function needsVerify(headers) {
   try {
@@ -64,35 +119,6 @@ function needsVerify(headers) {
   } catch {
     return false;
   }
-}
-
-/**
- * 从进房接口的响应里挖出「当前用户 → 主播」的关注关系
- *
- * 抖音把关注关系放在 `owner.follow_info.follow_status` 这类结构里，
- * 层级随版本变，所以按键名递归找 follow_info，连同主播的 web_rid 一起带回来
- * （web_rid 就是直播间 URL 里那串数字，用来挡掉「预加载别的直播间」的数据）。
- *
- * @returns {{followStatus: number, webRid: string}|null} 找不到就返回 null
- */
-export function extractRoomRelation(payload) {
-  if (!payload || typeof payload !== "object") return null;
-  const stack = [{ node: payload, depth: 0 }];
-  let budget = 4000;
-  while (stack.length && budget > 0) {
-    budget -= 1;
-    const { node, depth } = stack.pop();
-    if (!node || typeof node !== "object" || depth > 6) continue;
-    const info = node.follow_info;
-    if (info && typeof info === "object" && typeof info.follow_status === "number") {
-      const rid = node.web_rid ?? node.webRid ?? "";
-      return { followStatus: info.follow_status, webRid: rid === 0 ? "" : String(rid) };
-    }
-    for (const value of Object.values(node)) {
-      if (value && typeof value === "object") stack.push({ node: value, depth: depth + 1 });
-    }
-  }
-  return null;
 }
 
 /**
@@ -118,30 +144,15 @@ function readXhrPayload(xhr) {
 }
 
 /**
- * 开始观测关注接口
+ * 开始观测「关注 / 取关」接口
  * @param {Window} win 页面窗口（document.defaultView，不用脚本沙箱里的 window）
  * @param {object} handlers
  * @param {(result: object) => void} [handlers.onResult] 收到「关注 / 取关」响应时回调
- * @param {(relation: object) => void} [handlers.onSnapshot] 收到进房接口里的关注关系时回调
  * @returns {() => void} 取消观测
  */
-export function watchFollowApi(win, { onResult, onSnapshot } = {}) {
-  if (!win) return () => {};
-  const hasResult = typeof onResult === "function";
-  const hasSnapshot = typeof onSnapshot === "function";
-  if (!hasResult && !hasSnapshot) return () => {};
+export function watchFollowApi(win, { onResult } = {}) {
+  if (!win || typeof onResult !== "function") return () => {};
   const restores = [];
-
-  const reportSnapshot = (payload) => {
-    if (!hasSnapshot) return;
-    const relation = extractRoomRelation(payload);
-    if (!relation) return;
-    try {
-      onSnapshot(relation);
-    } catch {
-      /* 回调异常不影响页面 */
-    }
-  };
 
   // —— fetch ——
   try {
@@ -156,24 +167,18 @@ export function watchFollowApi(win, { onResult, onSnapshot } = {}) {
         } catch {
           url = "";
         }
-        const isFollow = hasResult && url.includes(FOLLOW_ENDPOINT);
-        const isEnter = hasSnapshot && ENTER_ENDPOINT_RE.test(url);
-        if ((!isFollow && !isEnter) || !promise?.then) return promise;
+        if (!url.includes(FOLLOW_ENDPOINT) || !promise?.then) return promise;
         return promise.then((res) => {
           try {
-            if (isFollow) {
-              const verifyRequired = needsVerify(res?.headers);
-              res
-                ?.clone?.()
-                .json?.()
-                .then((payload) => onResult(toFollowResult(payload, { verifyRequired })))
-                // 拿不到响应体就不下结论，免得把「读不到」当成「关注失败」
-                .catch(() => {
-                  if (verifyRequired) onResult(toFollowResult(null, { verifyRequired }));
-                });
-            } else {
-              res?.clone?.().json?.().then(reportSnapshot).catch(() => {});
-            }
+            const verifyRequired = needsVerify(res?.headers);
+            res
+              ?.clone?.()
+              .json?.()
+              .then((payload) => onResult(toFollowResult(payload, { verifyRequired })))
+              // 拿不到响应体就不下结论，免得把「读不到」当成「关注失败」
+              .catch(() => {
+                if (verifyRequired) onResult(toFollowResult(null, { verifyRequired }));
+              });
           } catch {
             /* 观测失败不影响页面 */
           }
@@ -205,16 +210,11 @@ export function watchFollowApi(win, { onResult, onSnapshot } = {}) {
       };
       const patchedSend = function (...args) {
         try {
-          const url = String(this.__pureLiveUrl || "");
-          const isFollow = hasResult && url.includes(FOLLOW_ENDPOINT);
-          const isEnter = hasSnapshot && ENTER_ENDPOINT_RE.test(url);
-          if (isFollow || isEnter) {
+          if (String(this.__pureLiveUrl || "").includes(FOLLOW_ENDPOINT)) {
             this.addEventListener("load", () => {
               const payload = readXhrPayload(this);
               // undefined 表示响应体读不出来（如 arraybuffer），此时不下结论
-              if (payload === undefined || payload === null) return;
-              if (isFollow) onResult(toFollowResult(payload));
-              else reportSnapshot(payload);
+              if (payload !== undefined) onResult(toFollowResult(payload));
             });
           }
         } catch {

@@ -15,7 +15,11 @@
  */
 import { ref } from "vue";
 import { elementText, normalizeText, simulateClick } from "@/common/dom";
-import { isFollowingStatus, watchFollowApi } from "@/site/douyin/follow-api";
+import {
+  isFollowingStatus,
+  requestRoomFollowStatus,
+  watchFollowApi,
+} from "@/site/douyin/follow-api";
 
 /**
  * 抖音直播的关注按钮
@@ -302,6 +306,10 @@ export const douyinFollow = (() => {
   // 有没有真实布局（jsdom 无布局，靠它决定要不要用尺寸判断可见性）
   let hasLayout = false;
   let layoutCheckedAt = 0;
+  // 已经在问接口的直播间号 / 上次问的时间 / 进行中的请求
+  let roomRid = "";
+  let roomFetchedAt = 0;
+  let roomFetching = null;
 
   function layoutAvailable() {
     const now = Date.now();
@@ -414,6 +422,8 @@ export const douyinFollow = (() => {
     if (!doc) return null;
     const found = find();
     supported.value = Boolean(found);
+    // 换了直播间（抖音是 SPA，点推荐位不刷新页面）：重新问一次接口
+    if (currentRid() && currentRid() !== roomRid) refreshRoomFollow();
     const now = Date.now();
     // 刚点过关注：文案可能是「乐观更新 → 被轮询刷回」，等接口结果为准
     if (now < pendingUntil) return found;
@@ -463,46 +473,63 @@ export const douyinFollow = (() => {
   }
 
   /**
-   * 收到进房接口里的关注关系
-   * 这是「进入一个已关注的直播间」时唯一可靠的初始状态：
-   * 页面上那两个按钮谁是隐藏的、文案有没有被刷旧，都不影响它。
+   * 主动问一次接口：当前主播我关注了吗
+   *
+   * 为什么自己发请求：脚本按 @run-at document-idle 执行，页面自己的进房请求早就发完了，
+   * 旁听不到。实测该接口免签名、带页面 cookie 直接 GET 就能拿到同样的数据，
+   * 所以进房 / 切房时补一次，拿服务端真值，不再猜 DOM。
    */
-  function handleSnapshot(relation) {
-    if (!doc || !relation) return;
-    const value = isFollowingStatus(relation.followStatus);
-    if (value === undefined) return;
-    // 抖音会预加载别的直播间，那种数据的 web_rid 和当前地址对不上，直接丢掉。
-    // 只在两边都是纯数字（同一个 id 体系）时才敢判「对不上」，避免 id 形式不同误杀。
+  function refreshRoomFollow(force = false) {
+    if (!doc) return;
     const rid = currentRid();
-    if (
-      rid &&
-      relation.webRid &&
-      /^\d+$/.test(rid) &&
-      /^\d+$/.test(relation.webRid) &&
-      rid !== relation.webRid
-    )
-      return;
-    // 正在点 / 刚点完：以点击结果为准，别让进房时的旧数据把状态顶回去
-    if (awaitingClick || Date.now() < pendingUntil) return;
-    lastError.value = "";
-    evidence = null;
-    setEvidence(value);
-    sync();
+    if (!rid) return;
+    if (roomFetching) return;
+    const now = Date.now();
+    if (!force && rid === roomRid && now - roomFetchedAt < 3000) return;
+    roomRid = rid;
+    roomFetchedAt = now;
+    roomFetching = (async () => {
+      try {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const result = await requestRoomFollowStatus(doc.defaultView, rid);
+          // 切房 / 点击期间拿到的结果可能已经过期，别再写进去
+          if (currentRid() !== rid) return;
+          if (awaitingClick || Date.now() < pendingUntil) return;
+          if (typeof result?.status === "number") {
+            evidence = null;
+            setEvidence(isFollowingStatus(result.status));
+            lastError.value = "";
+            sync();
+            return;
+          }
+          // 响应拿到了但没有关注关系（比如没开播 / 未登录），重试也没用
+          if (result?.fetched) break;
+          // 请求本身失败（风控 / 网络），等一会儿再试一次
+          await new Promise((resolve) => {
+            const win = doc?.defaultView;
+            if (win?.setTimeout) win.setTimeout(resolve, 1200);
+            else setTimeout(resolve, 1200);
+          });
+        }
+        console.debug("[pure-live] 进房接口没拿到关注关系，关注状态先按页面文案显示");
+      } finally {
+        roomFetching = null;
+      }
+    })();
   }
 
   /**
    * 只挂接口旁听，不做任何 DOM 操作
    *
-   * 进房接口在播放器挂载之前就发出去了，晚挂就永远拿不到「进房时是否已关注」这个真值，
-   * 所以入口处要第一时间调用它，别等 waitForElement。
+   * 点击结果必须在点击之前就挂上（抖音自己发的 relation/update 只能旁听到一次），
+   * 所以入口处第一时间调用它，别等 waitForElement。
    */
   function watch(document) {
     const target = document || doc;
     if (!target || stopApi) return false;
     doc = doc || target;
-    const win = target.defaultView;
     try {
-      stopApi = watchFollowApi(win, { onResult: handleResult, onSnapshot: handleSnapshot });
+      stopApi = watchFollowApi(target.defaultView, { onResult: handleResult });
     } catch (e) {
       console.error("[pure-live] 关注接口观测失败", e);
       return false;
@@ -519,7 +546,11 @@ export const douyinFollow = (() => {
     graceMs = grace;
     hasLayout = false;
     layoutCheckedAt = 0;
+    roomRid = "";
+    roomFetchedAt = 0;
     sync();
+    // 进房就问一次：图标不该等用户点一下才变对
+    refreshRoomFollow(true);
     const win = doc.defaultView;
     if (!win?.MutationObserver) return;
     observer = new win.MutationObserver((mutations) => {
@@ -580,6 +611,9 @@ export const douyinFollow = (() => {
     evidence = null;
     hasLayout = false;
     layoutCheckedAt = 0;
+    roomRid = "";
+    roomFetchedAt = 0;
+    roomFetching = null;
     lastCandidateKey = "";
   }
 

@@ -6,7 +6,8 @@ import { JSDOM } from "jsdom";
 const sources = ["common/dom", "site/douyin/follow-api", "site/douyin/follow"]
   .map((path) =>
     readFileSync(new URL(`../src/${path}.js`, import.meta.url), "utf8")
-      .replace(/^import .+;\r?\n/gm, "")
+      // 去掉 import（可能是多行）、export 关键字，剩下的代码直接 eval
+      .replace(/^import[\s\S]*?from\s+["'][^"']+["'];\r?\n/gm, "")
       .replace(/^export /gm, ""),
   )
   .join("\n");
@@ -26,22 +27,35 @@ function setup(t, html) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// 造一个假的 fetch：模拟页面自己去调关注接口
-function fakeFetch(window, payload, { verify = false, delay = 0 } = {}) {
+// 造一个假的 fetch：既能模拟页面自己调的关注接口，也能模拟脚本主动去问的进房接口
+function fakeFetch(window, payload, { verify = false, delay = 0, enter = {} } = {}) {
   window.__fetchCalls = 0;
-  const response = {
-    headers: {
-      get: (k) => (verify && k === "bdturing-verify" ? "1" : null),
-    },
-    clone: () => ({
-      json: async () => payload,
-    }),
-  };
-  window.fetch = async () => {
+  window.__fetchUrls = [];
+  window.fetch = async (input) => {
+    const url = String(input?.url ?? input ?? "");
     window.__fetchCalls += 1;
+    window.__fetchUrls.push(url);
+    if (url.includes("/webcast/room/web/enter/")) {
+      const body = typeof enter === "function" ? enter(url) : enter;
+      return { ok: true, json: async () => body };
+    }
     if (delay) await sleep(delay);
-    return response;
+    const body = typeof payload === "function" ? payload(url) : payload;
+    return {
+      ok: true,
+      headers: {
+        get: (k) => (verify && k === "bdturing-verify" ? "1" : null),
+      },
+      json: async () => body,
+      clone: () => ({
+        json: async () => body,
+      }),
+    };
   };
+}
+
+function followCallCount(window) {
+  return window.__fetchUrls.filter((url) => url.includes("/relation/update/")).length;
 }
 
 const HEADER = `<div id="HeaderLayout">
@@ -96,7 +110,7 @@ test("抖音：接口已关注成功，页面文案被轮询刷回也不会让�
   assert.equal(window.__follow.following.value, true, "点击后先乐观变蓝");
 
   await sleep(120);
-  assert.equal(window.__fetchCalls, 1, "应当真的发出了关注请求");
+  assert.equal(followCallCount(window), 1, "应当真的发出了关注请求");
   assert.equal(
     window.__follow.following.value,
     true,
@@ -339,42 +353,27 @@ test("抖音：头部被脚本 display:none 后，别处可见的「关注」按
   assert.notEqual(found?.element.id, "decoy", "不能去点推荐位上的关注");
 });
 
-const ROOM_ENTER_API = "/webcast/room/web/enter/?aid=6383";
-
-function roomEnterPayload(followStatus, webRid) {
+// 进房接口实测结构：主播对象在 data.user，关注关系在 data.user.follow_info
+function roomEnterPayload(followStatus, { similarRooms = [] } = {}) {
   return {
     status_code: 0,
     data: {
-      room: { owner: { ...(webRid ? { web_rid: webRid } : {}), follow_info: { follow_status: followStatus } } },
+      user: { nickname: "某主播", follow_info: { follow_status: followStatus } },
+      similar_rooms: similarRooms.map((status, i) => ({
+        room: { owner: { nickname: `推荐${i}`, follow_info: { follow_status: status } } },
+      })),
     },
   };
 }
-
-test("抖音：预加载的别的直播间的进房数据不会被当成当前主播", async (t) => {
-  const dom = setup(t, HEADER);
-  const { window } = dom;
-  const { document } = window;
-  // 当前地址是 live.douyin.com/123，预加载的是 999 号直播间
-  fakeFetch(window, roomEnterPayload(1, "999"));
-
-  window.__follow.start(document);
-  window.fetch(ROOM_ENTER_API);
-  await sleep(30);
-  assert.equal(window.__follow.following.value, false, "对不上房间号的数据必须丢掉");
-});
 
 test("抖音：进房接口说已关注时，即使页面文案是「关注」也显示实心蓝心", async (t) => {
   const dom = setup(t, HEADER);
   const { window } = dom;
   const { document } = window;
-  fakeFetch(window, roomEnterPayload(1));
+  fakeFetch(window, {}, { enter: roomEnterPayload(1) });
 
   window.__follow.start(document);
-  assert.equal(window.__follow.following.value, false, "刚进来只能读到页面文案");
-
-  // 页面自己请求进房接口（被观测层旁听到）
-  window.fetch(ROOM_ENTER_API);
-  await sleep(30);
+  await sleep(40);
   assert.equal(window.__follow.following.value, true, "服务端说已关注，就得显示已关注");
 
   // 后面轮询把文案刷回「关注」也不该退回空心
@@ -386,14 +385,56 @@ test("抖音：进房接口说未关注时，页面文案是「已关注」也�
   const dom = setup(t, FOLLOWED_ROOM);
   const { window } = dom;
   const { document } = window;
-  fakeFetch(window, roomEnterPayload(0));
+  fakeFetch(window, {}, { enter: roomEnterPayload(0) });
 
   window.__follow.start(document);
+  assert.equal(window.__follow.following.value, true, "接口回来之前先按页面文案");
+
+  await sleep(40);
+  assert.equal(window.__follow.following.value, false, "接口说没关注就是没关注");
+});
+
+test("抖音：推荐直播间的关注关系不会被当成当前主播的", async (t) => {
+  const dom = setup(t, HEADER);
+  const { window } = dom;
+  const { document } = window;
+  // 当前主播未关注，推荐位里的主播全都已关注
+  fakeFetch(window, {}, { enter: roomEnterPayload(0, { similarRooms: [1, 2, 2, 1] }) });
+
+  window.__follow.start(document);
+  await sleep(40);
+  assert.equal(window.__follow.following.value, false, "只认 data.user（当前主播）");
+});
+
+test("抖音：切到另一个直播间后重新问一次接口", async (t) => {
+  const dom = setup(t, HEADER);
+  const { window } = dom;
+  const { document } = window;
+  fakeFetch(window, {}, {
+    enter: (url) => roomEnterPayload(url.includes("456") ? 0 : 1),
+  });
+
+  window.__follow.start(document);
+  await sleep(40);
   assert.equal(window.__follow.following.value, true);
 
-  window.fetch(ROOM_ENTER_API);
-  await sleep(30);
-  assert.equal(window.__follow.following.value, false);
+  // 抖音是 SPA：点推荐位换房间不刷新页面，只换 URL
+  window.history.pushState({}, "", "/456");
+  window.__follow.sync();
+  await sleep(40);
+  assert.equal(window.__follow.following.value, false, "换房间要重新取一次状态");
+});
+
+test("抖音：接口没给关注关系时退回页面文案，不会卡死", async (t) => {
+  const dom = setup(t, FOLLOWED_ROOM);
+  const { window } = dom;
+  const { document } = window;
+  fakeFetch(window, {}, { enter: { status_code: 0, data: {} } });
+
+  window.__follow.start(document);
+  await sleep(40);
+  assert.equal(window.__follow.following.value, true, "接口没数据就看文案");
+  assert.equal(window.__follow.lastError.value, "");
 });
 
 test("抖音：按钮上读不出文案时，不要把已关注刷成空心", (t) => {
