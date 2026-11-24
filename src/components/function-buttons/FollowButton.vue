@@ -14,6 +14,7 @@
   - If not, see <https://www.gnu.org/licenses/>.
   -->
 <script setup>
+import { computed } from "vue";
 import { douyinFollow } from "@/site/douyin/follow";
 
 /*
@@ -36,6 +37,12 @@ const HEART_PATH =
 // 只有抖音直播间拿到了原生关注按钮，这个按钮才会出现
 const supported = douyinFollow.supported;
 const following = douyinFollow.following;
+const followError = douyinFollow.lastError;
+
+// 关注失败时把原因挂在 title 上：鼠标悬停即可看到抖音返回了什么
+const title = computed(
+  () => followError.value || (following.value ? "取消关注" : "关注主播"),
+);
 
 function toggle() {
   douyinFollow.toggle();
@@ -46,7 +53,8 @@ function toggle() {
   <button
     v-if="supported"
     class="button"
-    :title="following ? '取消关注' : '关注主播'"
+    :class="{ 'has-error': Boolean(followError) }"
+    :title="title"
     :aria-label="following ? '已关注' : '关注'"
     :aria-pressed="following ? 'true' : 'false'"
     @click="toggle"

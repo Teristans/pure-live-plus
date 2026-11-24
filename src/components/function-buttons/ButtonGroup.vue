@@ -95,6 +95,11 @@ function switchAutoHighestImage() {
   opacity: 1;
 }
 
+/* 关注失败时点亮图标，鼠标悬停看具体原因 */
+.button.has-error {
+  opacity: 1;
+}
+
 .button:hover {
   opacity: 1;
 }

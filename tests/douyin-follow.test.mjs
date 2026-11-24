@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 
-const sources = ["common/dom", "site/douyin/follow"]
+const sources = ["common/dom", "site/douyin/follow-api", "site/douyin/follow"]
   .map((path) =>
     readFileSync(new URL(`../src/${path}.js`, import.meta.url), "utf8")
       .replace(/^import .+;\r?\n/gm, "")
@@ -22,6 +22,26 @@ function setup(t, html) {
     window.__find = findFollowControl;
     window.__state = readFollowState;`);
   return dom;
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// 造一个假的 fetch：模拟页面自己去调关注接口
+function fakeFetch(window, payload, { verify = false, delay = 0 } = {}) {
+  window.__fetchCalls = 0;
+  const response = {
+    headers: {
+      get: (k) => (verify && k === "bdturing-verify" ? "1" : null),
+    },
+    clone: () => ({
+      json: async () => payload,
+    }),
+  };
+  window.fetch = async () => {
+    window.__fetchCalls += 1;
+    if (delay) await sleep(delay);
+    return response;
+  };
 }
 
 const HEADER = `<div id="HeaderLayout">
@@ -51,6 +71,130 @@ test("抖音：找到原生关注按钮，点击后状态同步为已关注", (t
 
   dom.window.__follow.sync();
   assert.equal(dom.window.__follow.following.value, true, "以页面真实文案为准");
+});
+
+test("抖音：接口已关注成功，页面文案被轮询刷回也不会让图标变回空心", async (t) => {
+  const dom = setup(t, HEADER);
+  const { window } = dom;
+  const { document } = window;
+  const button = document.querySelector(".follow-btn");
+  fakeFetch(window, { status_code: 0, data: { follow_status: 1 } });
+
+  button.addEventListener("click", () => {
+    button.innerHTML = "<span>已关注</span>";
+    // 页面自己发关注请求（走被观测的那层 fetch）
+    window.fetch("/webcast/user/relation/update/");
+    // 1 秒内直播间信息轮询把文案刷回「关注」
+    setTimeout(() => {
+      button.innerHTML = "<span>关注</span>";
+      window.__follow.sync();
+    }, 20);
+  });
+
+  window.__follow.start(document, { grace: 200 });
+  window.__follow.toggle();
+  assert.equal(window.__follow.following.value, true, "点击后先乐观变蓝");
+
+  await sleep(120);
+  assert.equal(window.__fetchCalls, 1, "应当真的发出了关注请求");
+  assert.equal(
+    window.__follow.following.value,
+    true,
+    "接口说关注成功，页面文案被刷旧也不该退回空心",
+  );
+  assert.equal(window.__follow.lastError.value, "");
+});
+
+test("抖音：只看到「关注成功」提示、接口没拦到时，也按已关注处理", async (t) => {
+  const dom = setup(t, HEADER);
+  const { window } = dom;
+  const { document } = window;
+  const button = document.querySelector(".follow-btn");
+  button.addEventListener("click", () => {
+    button.innerHTML = "<span>已关注</span>";
+    const toast = document.createElement("div");
+    toast.textContent = "关注成功";
+    document.body.append(toast);
+    // 提示之后文案被轮询刷回「关注」
+    setTimeout(() => {
+      button.innerHTML = "<span>关注</span>";
+      window.__follow.sync();
+    }, 20);
+  });
+
+  window.__follow.start(document, { grace: 200 });
+  window.__follow.toggle();
+  await sleep(120);
+  assert.equal(window.__follow.following.value, true, "有成功提示就该保持已关注");
+  assert.equal(window.__follow.lastError.value, "");
+});
+
+test("抖音：换到别的主播直播间后，接口确认过的状态自动作废", async (t) => {
+  const dom = setup(t, HEADER);
+  const { window } = dom;
+  const { document } = window;
+  const button = document.querySelector(".follow-btn");
+  fakeFetch(window, { status_code: 0, data: { follow_status: 1 } });
+  button.addEventListener("click", () => window.fetch("/webcast/user/relation/update/"));
+
+  window.__follow.start(document, { grace: 200 });
+  window.__follow.toggle();
+  await sleep(50);
+  assert.equal(window.__follow.following.value, true);
+
+  // 换直播间：主播名变了，新主播还没关注
+  button.innerHTML = "<span>关注</span>";
+  const nick = document.querySelector(".nick");
+  nick.setAttribute("data-e2e", "live-room-nickname");
+  nick.textContent = "另一个主播";
+  window.__follow.sync();
+  assert.equal(window.__follow.following.value, false, "换房间后要按新房间的真实状态显示");
+});
+
+test("抖音：接口返回失败时退回空心，并把原因挂出来", async (t) => {
+  const dom = setup(t, HEADER);
+  const { window } = dom;
+  const { document } = window;
+  const button = document.querySelector(".follow-btn");
+  fakeFetch(window, { status_code: 10004, data: { prompts: "操作太频繁，请稍后再试" } });
+  button.addEventListener("click", () => {
+    window.fetch("/webcast/user/relation/update/");
+  });
+
+  window.__follow.start(document, { grace: 200 });
+  window.__follow.toggle();
+  await sleep(80);
+  assert.equal(window.__follow.following.value, false, "没成功就不能显示已关注");
+  assert.match(window.__follow.lastError.value, /操作太频繁/);
+});
+
+test("抖音：接口要求验证时提示手动确认", async (t) => {
+  const dom = setup(t, HEADER);
+  const { window } = dom;
+  const { document } = window;
+  document
+    .querySelector(".follow-btn")
+    .addEventListener("click", () => window.fetch("/webcast/user/relation/update/"));
+  fakeFetch(window, { status_code: 0, data: {} }, { verify: true });
+
+  window.__follow.start(document, { grace: 200 });
+  window.__follow.toggle();
+  await sleep(80);
+  assert.match(window.__follow.lastError.value, /验证/);
+});
+
+test("抖音：接口一直没有回来，等一会儿后退回页面真实状态并提示", async (t) => {
+  const dom = setup(t, HEADER);
+  const { window } = dom;
+  const { document } = window;
+  document.querySelector(".follow-btn").addEventListener("click", () => {});
+
+  window.__follow.start(document, { grace: 30 });
+  window.__follow.toggle();
+  assert.equal(window.__follow.following.value, true);
+  await sleep(150);
+  assert.equal(window.__follow.following.value, false, "没响应就该老实退回空心");
+  assert.match(window.__follow.lastError.value, /没有响应/);
 });
 
 test("抖音：导航栏里指向「关注页」的入口不会被当成关注主播", (t) => {
