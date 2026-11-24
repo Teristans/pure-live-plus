@@ -5,12 +5,12 @@
 
 ## 仓库包含的脚本
 
-两个互相独立的油猴脚本，分别发布各自的 Release，可同时安装（作用页面不重叠）。
+本仓库发布「纯净直播」这一个脚本；抖音网页版精简版已拆到独立仓库 [douyin-pure](https://github.com/Teristans/douyin-pure)，各自发各自的 Release，两者互相独立、可同时安装（作用页面不重叠）。
 
 | 脚本 | 用途 | 版本 | 一键安装 |
 |---|---|---|---|
-| 纯净直播（修改自用版） | 斗鱼 / 虎牙 / B站 / 抖音**直播**精简、自动最高画质 | v5.3.7 | [安装](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v5.3.7/pure-live.user.js) |
-| [抖音网页版精简版](https://github.com/Teristans/douyin-pure) | 抖音**网页版视频**精简、清晰度智能 1080、搜索与频道收在右侧竖排图标列 | v6.0.0 | [安装](https://github.com/Teristans/douyin-pure/releases/download/douyin-pure-v6.0.0/douyin-pure.user.js) |
+| 纯净直播（修改自用版） | 斗鱼 / 虎牙 / B站 / 抖音**直播**精简、自动最高画质 | v6.0.0 | [安装](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v6.0.0/pure-live.user.js) |
+| [抖音网页版精简版](https://github.com/Teristans/douyin-pure) | 抖音**网页版视频**精简、清晰度智能 1080、搜索与频道收在右侧竖排图标列 | v1.5.0 | [安装](https://github.com/Teristans/douyin-pure/releases/download/douyin-pure-v1.5.0/douyin-pure.user.js) |
 
 Release 页：https://github.com/Teristans/pure-live-plus/releases
 
@@ -30,6 +30,14 @@ Release 页：https://github.com/Teristans/pure-live-plus/releases
   - **斗鱼 / B站**：进入直播间后默认选择原生菜单中最高可用画质，主动展开延迟加载的画质菜单，兼容晚于 10 秒完成初始化的播放器；自动选择成功后停止干预，保留用户后续手动选择；关闭开关时不操作菜单。
   - **虎牙**：按 `iSortValue` 选择最高画质，解锁扫码限制（status=4），保留原画 `iBitRate=0`，通过 `unsafeWindow` 使用页面自身 jQuery；画质处理提前启动，避免播放器容器延迟创建时中断。
 - 构建配置固定 `vite` / `vitest` 版本，恢复正常生产构建。
+
+### v6.0.0
+
+**版本号对齐 6.0，抖音网页版精简版正式独立成库**
+
+- 本脚本（`pure-live.user.js`）功能与 v5.3.7 完全一致，只把版本线提到 `6.0.0`。斗鱼 / 虎牙 / B站 / 抖音直播的行为没有任何改动。
+- 抖音**网页版视频**精简（顶栏左栏隐藏、搜索与频道收进右侧竖排图标列、清晰度智能 1080）已从本仓库移出，独立发布在 https://github.com/Teristans/douyin-pure ，版本线走它自己的 `1.x`（当前 v1.5.0）。
+- 两个脚本的作用页面不重叠，可以同时安装。
 
 ### v5.3.7
 
@@ -242,15 +250,15 @@ pnpm run test:all             # 以上全部
 
 **纯净直播（本脚本）**
 
-- 一键安装：[pure-live.user.js v5.3.7](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v5.3.7/pure-live.user.js)
-- Release 说明：[pure-live-v5.3.7](https://github.com/Teristans/pure-live-plus/releases/tag/pure-live-v5.3.7)
+- 一键安装：[pure-live.user.js v6.0.0](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v6.0.0/pure-live.user.js)
+- Release 说明：[pure-live-v6.0.0](https://github.com/Teristans/pure-live-plus/releases/tag/pure-live-v6.0.0)
 - 或自行构建：`pnpm install && pnpm build` 后导入 `dist/pure-live.user.js`
 - 安装后请只启用一份脚本（原版或本修改版二选一），避免重复执行
 
 **抖音网页版精简版（已拆分为独立仓库）**
 
 - 仓库：https://github.com/Teristans/douyin-pure
-- 一键安装：[douyin-pure.user.js v6.0.0](https://github.com/Teristans/douyin-pure/releases/download/douyin-pure-v6.0.0/douyin-pure.user.js)
+- 一键安装：[douyin-pure.user.js v1.5.0](https://github.com/Teristans/douyin-pure/releases/download/douyin-pure-v1.5.0/douyin-pure.user.js)
 
 两者互相独立、各自维护、可同时安装。抖音网页版的代码已从本仓库移出，本仓库只保留直播站脚本。
 
@@ -260,7 +268,7 @@ pnpm run test:all             # 以上全部
 
 - `@namespace` / `@homepage` / `@source`：`https://github.com/Teristans/pure-live-plus`
 - `@name`：纯净直播（pure live）修改自用版
-- `@version`：`5.3.7`
+- `@version`：`6.0.0`
 - `@license`：GPL-3.0-or-later
 
 当前发布状态：
@@ -274,5 +282,6 @@ pnpm run test:all             # 以上全部
 - [x] `pure-live-v5.3.5` 已发布：抖音面板新增「下一个推荐直播间」「回推荐流首页」两个按钮；修复子组件图标比同级按钮高 1px 的对齐问题。
 - [x] `pure-live-v5.3.6` 已发布：斗鱼改为自动勾选播放器设置里的 7 个屏蔽开关，礼物特效 / 福袋口令由斗鱼自己在数据层过滤，按文案删 DOM 降为兜底。
 - [x] `pure-live-v5.3.7` 已发布：「下一个」改为按 `/webcast/feed/` 的房间短号直接进下一个直播间，「去推荐流」改跳抖音短视频推荐流，两个图标一并更换。
+- [x] `pure-live-v6.0.0` 已发布：版本线提到 6.0；脚本行为与 v5.3.7 一致，抖音网页版精简版改在独立仓库发布（`douyin-pure`，v1.5.0）。
 - [x] `LICENSE` 与原作者、修复贡献者署名完整保留。
-- [x] `@version` 从 `5.2.16` 升到 `5.3.7`（`5.3.0` 为首次发布的功能版本），作为本仓库的独立版本线。
+- [x] `@version` 从 `5.2.16` 升到 `6.0.0`（`5.3.0` 为首次发布的功能版本），作为本仓库的独立版本线。
