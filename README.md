@@ -5,10 +5,14 @@
 
 ## 仓库包含的脚本
 
-| 脚本 | 用途 | 安装 |
-|---|---|---|
-| 纯净直播（修改自用版） | 斗鱼 / 虎牙 / B站 / 抖音**直播**精简、自动最高画质 | 见下文「[安装与使用](#安装与使用)」 |
-| [抖音网页版精简版](./douyin-pure/README.md) | 抖音**网页版视频**精简、清晰度智能 1080、悬浮菜单在左上角 | [一键安装 v1.4.0](https://github.com/Teristans/pure-live-plus/releases/download/douyin-pure-v1.4.0/douyin-pure.user.js) |
+两个互相独立的油猴脚本，分别发布各自的 Release，可同时安装（作用页面不重叠）。
+
+| 脚本 | 用途 | 版本 | 一键安装 |
+|---|---|---|---|
+| 纯净直播（修改自用版） | 斗鱼 / 虎牙 / B站 / 抖音**直播**精简、自动最高画质 | v5.2.16 | [安装](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v5.2.16/pure-live.user.js) |
+| [抖音网页版精简版](./douyin-pure/README.md) | 抖音**网页版视频**精简、清晰度智能 1080、悬浮菜单在左上角 | v1.4.0 | [安装](https://github.com/Teristans/pure-live-plus/releases/download/douyin-pure-v1.4.0/douyin-pure.user.js) |
+
+Release 页：https://github.com/Teristans/pure-live-plus/releases
 
 ## 作者与来源
 
@@ -63,7 +67,18 @@ pnpm run test:bundle    # 成品脚本测试（6 项）
 
 ## 安装与使用
 
-将 `dist/pure-live.user.js` 导入 ScriptCat 或 Tampermonkey。安装后请只启用一份脚本（原版或本修改版二选一），避免重复执行。
+**纯净直播（本脚本）**
+
+- 一键安装：[pure-live.user.js v5.2.16](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v5.2.16/pure-live.user.js)
+- 或自行构建后导入 `dist/pure-live.user.js`
+- 安装后请只启用一份脚本（原版或本修改版二选一），避免重复执行
+
+**抖音网页版精简版**
+
+- 一键安装：[douyin-pure.user.js v1.4.0](https://github.com/Teristans/pure-live-plus/releases/download/douyin-pure-v1.4.0/douyin-pure.user.js)
+- 详细说明见 [douyin-pure/README.md](./douyin-pure/README.md)
+
+两者互相独立，可同时安装。
 
 ## 发布状态
 
@@ -74,8 +89,8 @@ pnpm run test:bundle    # 成品脚本测试（6 项）
 - `@version`：`5.2.16`
 - `@license`：GPL-3.0-or-later
 
-发布前如需收尾，可按需处理：
+当前发布状态：
 
-- [ ] 更新 `@version` 版本号（当前 `5.2.16`，与上游修复版一致；如作为独立发布可改为自己的版本序列）。
-- [ ] 在本仓库 Release 或脚本平台发布后，把下载入口链接补充到 README。
-- [ ] 确认 `LICENSE` 与原作者、修复贡献者署名完整保留。
+- [x] 已发布两个独立 Release：`pure-live-v5.2.16`（本脚本）、`douyin-pure-v1.4.0`（抖音脚本），下载入口已补入 README。
+- [x] `LICENSE` 与原作者、修复贡献者署名完整保留。
+- [ ] `@version` 当前 `5.2.16`，与上游修复版一致；后续如作为独立版本线，可自行改为 v6.x。
