@@ -17,9 +17,34 @@
 import { ref } from "vue";
 import { swt } from "@/common/utils";
 import FollowButton from "@/components/function-buttons/FollowButton.vue";
+import IconActionButton from "@/components/function-buttons/IconActionButton.vue";
+import { goNextRoom, goRecommendFeed } from "@/site/douyin/feed";
 
 const ON_COLOR = "#2C9EFF";
 const OFF_COLOR = "#D94A3C";
+
+// 推荐流是抖音独有的概念，其它站点不显示这两个按钮
+const isDouyin = (() => {
+  try {
+    return location.hostname === "live.douyin.com";
+  } catch {
+    return false;
+  }
+})();
+
+// 向下箭头：继续往下刷，对应抖音竖滑换直播间的方向
+const NEXT_ROOM_PATHS = [
+  "M462 130 h100 v500 h-100 z",
+  "M512 880 L168 536 L244 460 L512 728 L780 460 L856 536 Z",
+];
+
+// 四宫格：推荐流首页（也就是被脚本隐藏掉的那个「直播」导航入口）
+const FEED_HOME_PATHS = [
+  "M132 132 h340 v340 h-340 z",
+  "M552 132 h340 v340 h-340 z",
+  "M132 552 h340 v340 h-340 z",
+  "M552 552 h340 v340 h-340 z",
+];
 
 const scriptSwitchOn = ref(swt.script.isOn());
 function switchScript() {
@@ -33,13 +58,22 @@ function switchAutoHighestImage() {
   autoHighestImageSwitchOn.value = !autoHighestImageSwitchOn.value;
   swt.autoHighestImage.switch();
 }
+
+// 切到推荐流的下一个直播间。走了哪条降级路径打到控制台，出问题时好定位
+function switchNextRoom() {
+  console.debug("[pure-live] 切下一个推荐直播间：", goNextRoom());
+}
+
+function openRecommendFeed() {
+  goRecommendFeed();
+}
 </script>
 
 <template>
   <!--
-    三个按钮放进同一个纵向 flex 容器：间距一致，外观样式也只在这里定义一份。
-    FollowButton 的根节点同样挂 .button（Vue 作用域样式会作用到子组件根节点），
-    所以它自己不再带尺寸和底色，换图标即可保持一致。
+    面板上的按钮全部放进同一个纵向 flex 容器：间距一致，外观样式也只在这里定义一份。
+    FollowButton / IconActionButton 的根节点同样挂 .button（Vue 作用域样式会作用到子组件根节点），
+    所以它们自己不再带尺寸和底色，换图标即可保持一致。
   -->
   <div class="button-group">
     <button
@@ -64,6 +98,18 @@ function switchAutoHighestImage() {
           <path d="M752.4864 802.048a70.144 70.144 0 0 1-3.4816 0.1024H274.9952A70.144 70.144 0 0 1 204.8 731.9552V326.1952A70.2464 70.2464 0 0 1 274.944 256h474.112a68.9664 68.9664 0 0 1 33.0752 8.2432 70.9632 70.9632 0 0 1 27.136 25.856 73.3696 73.3696 0 0 1 7.8336 18.9952 75.1616 75.1616 0 0 1 2.0992 17.1008v405.76a70.3488 70.3488 0 0 1-43.3152 64.8704 74.24 74.24 0 0 1-16.5376 4.5568 69.2736 69.2736 0 0 1-6.8608 0.6656zM342.9888 392.5504a34.4576 34.4576 0 0 0-28.0576 12.4416 34.2016 34.2016 0 0 0-7.7312 21.6576v204.8a34.048 34.048 0 0 0 4.864 17.5616l0.8704 1.4336a34.9184 34.9184 0 0 0 15.36 12.5952 34.4576 34.4576 0 0 0 29.1328-1.4336 38.0928 38.0928 0 0 0 8.0384-5.9904 32.768 32.768 0 0 0 7.9872-12.6464 33.28 33.28 0 0 0 2.048-11.52V563.2h68.2496v68.2496a34.4576 34.4576 0 0 0 12.4416 26.4192 35.2256 35.2256 0 0 0 16.6912 7.3728 36.3008 36.3008 0 0 0 11.6224-0.3072 30.1056 30.1056 0 0 0 7.936-2.6112 39.2704 39.2704 0 0 0 7.0656-4.4544 33.9968 33.9968 0 0 0 12.4928-26.4192v-204.8a33.792 33.792 0 0 0-13.824-27.392 34.0992 34.0992 0 0 0-54.4256 27.392v68.3008H375.4496V426.6496a34.4576 34.4576 0 0 0-12.4416-26.368 34.2528 34.2528 0 0 0-19.968-7.68z m271.4112 0h-41.5232a26.6752 26.6752 0 0 0-26.7264 26.7264V640.2048a22.528 22.528 0 0 0 0.768 5.12 32.768 32.768 0 0 0 2.3552 6.144 28.16 28.16 0 0 0 6.656 8.0896 26.624 26.624 0 0 0 16.896 6.0416H614.4a139.008 139.008 0 0 0 45.9776-7.9872 135.68 135.68 0 0 0 63.6928-47.2064 144.5376 144.5376 0 0 0 13.7728-22.9888 135.9872 135.9872 0 0 0 7.168-97.9968 132.8128 132.8128 0 0 0-17.1008-36.1984 139.008 139.008 0 0 0-32.2048-33.792 133.632 133.632 0 0 0-35.328-18.944A138.24 138.24 0 0 0 614.4 392.6016z m3.3792 204.6976a66.6112 66.6112 0 0 1-3.3792 0.1024V460.8a67.84 67.84 0 0 1 50.6368 22.4256 69.12 69.12 0 0 1 17.3568 39.168 60.7744 60.7744 0 0 1 0 13.3632 66.304 66.304 0 0 1-7.7312 25.4976 67.8912 67.8912 0 0 1-46.9504 34.816 65.4336 65.4336 0 0 1-9.9328 1.1776z" fill="#FFFFFF" />
         </svg>
       </button>
+      <template v-if="isDouyin">
+        <icon-action-button
+          title="下一个推荐直播间"
+          :paths="NEXT_ROOM_PATHS"
+          @click="switchNextRoom"
+        />
+        <icon-action-button
+          title="回推荐流首页"
+          :paths="FEED_HOME_PATHS"
+          @click="openRecommendFeed"
+        />
+      </template>
     </template>
   </div>
 </template>
@@ -86,8 +132,12 @@ function switchAutoHighestImage() {
   transition: opacity 0.3s ease;
 }
 
-/* 去掉行内 SVG 的基线留白，保证三个按钮高度都是 20px、间距均匀 */
-.button > svg {
+/*
+  去掉行内 SVG 的基线留白，保证所有按钮高度都是 20px、间距均匀。
+  注意用 :deep —— FollowButton / IconActionButton 里的 svg 在自己的作用域内，
+  普通的 `.button > svg` 命中不到，会让这类按钮高 1px，和直接写在这里的按钮对不齐。
+*/
+.button :deep(svg) {
   display: block;
 }
 
