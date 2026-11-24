@@ -1,0 +1,79 @@
+/*
+ * pure-live, a script that makes live webpages pure.
+ * Copyright (C) 2025-present ljezio
+ *
+ * This program is free software: you can redistribute it and/or modify it under the
+ * terms of the GNU General Public License as published by the Free Software Foundation,
+ * either version 3 of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with this program.
+ * If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* 隐藏无用元素 */
+header,
+aside,
+#js-bottom-left,
+#bc3,
+#bc3-bgblur,
+#js-player-dialog,
+#js-player-above-controller,
+#js-layout-fixed-buff,
+#js-room-top-banner,
+#js-layout-fixed-right,
+#driver-popover-content,
+#js-layout-fixed-banner,
+.wm-general,
+.bc-wrapper,
+.RechangeJulyPopups,
+.MatchVoteDialog,
+.bacpCommonKeFu,
+.dy-Modal-wrap,
+.CloseVideoPlayerAd,
+.JinChanChanGame,
+.dy-Message,
+[class^="snapbar__"],
+[class^="sidebar__"],
+[class^="title__"],
+[class^="interactive__"],
+[class^="toggle__"],
+[class^="quickChatBarView-"],
+[class^="fullScreenSendor-"] {
+  display: none !important;
+}
+
+/* 播放器占满网页 */
+#root,
+#js-player-main {
+  margin: 0 !important;
+  height: 100vh !important;
+}
+
+[class^="stream__"] {
+  bottom: 0 !important;
+  top: 0 !important;
+}
+
+[class^="case__"],
+[class^="playerWrap__"],
+[class^="page__"] {
+  padding: 0 !important;
+}
+
+#js-player-main::before,
+[class^="player__"]::before {
+  content: none !important;
+}
+
+[class^="stream__"] {
+  height: 100vh !important;
+}
+
+/* 隐藏滚动条 */
+body {
+  overflow: hidden !important;
+}

@@ -1,0 +1,85 @@
+/*
+ * pure-live, a script that makes live webpages pure.
+ * Copyright (C) 2025-present ljezio
+ *
+ * This program is free software: you can redistribute it and/or modify it under the
+ * terms of the GNU General Public License as published by the Free Software Foundation,
+ * either version 3 of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with this program.
+ * If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* 隐藏无用元素 */
+#duya-header,
+#matchComponent2,
+#room-footer,
+#match-cms-content,
+#J_roomHeader,
+#player-gift-wrap,
+#player-ext-wrap,
+#player-fullpage-right-btn,
+#player-fullpage-btn,
+#J_spbg,
+#gift-show-btn,
+#J_roomGgTop,
+#player-login-guide-tip,
+#player-full-input,
+#huya-ab,
+#HUYA-UDBSdkLgn,
+.mod-sidebar,
+.match-top,
+.match-nav,
+.room-core-r,
+.common-popup,
+.popup-slide-in,
+.gift-info-wrap,
+.match-score-popup,
+.pre-ab-new-wrap,
+.new-reward-ab-wrap,
+.end-ab-wrap {
+  display: none !important;
+}
+
+#J_mainRoom {
+  background-image: none !important;
+}
+
+/* 播放器占满网页 */
+#J_mainWrap,
+#J_mainRoom {
+  padding: 0 !important;
+}
+
+.room-core-l,
+.match-room {
+  margin: 0 !important;
+}
+
+.room-player-wrap {
+  width: 100vw !important;
+}
+
+#root,
+#player-wrap,
+#player-video {
+  height: 100vh !important;
+}
+
+#videoContainer {
+  height: calc(100vh + 60px) !important;
+}
+
+/* 禁止滚动 */
+#main_col {
+  overflow: hidden;
+}
+
+/* 扫码解锁清晰度添加中划线 */
+.bitrate-right-btn.common-enjoy-btn {
+  text-decoration: line-through !important;
+}
