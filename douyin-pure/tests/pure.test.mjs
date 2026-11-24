@@ -16,22 +16,21 @@ function makeStorage(initial = {}) {
   };
 }
 
+// tabsHtml 可自定义，用于模拟抖音改版后 class 完全变化的情况。
 function loadScript({
   withGM = true,
   readyState = "complete",
-  href = "https://www.douyin.com/?recommend=1",
-  withNativeTabs = true,
+  href = "https://www.douyin.com/?is_from_mobile_home=1&recommend=1",
+  tabsHtml = `<div id="douyin-navigation" data-e2e="douyin-navigation">
+       <div class="tab-recommend"><span>推荐</span></div>
+       <div class="tab-discover"><span>精选</span></div>
+       <div class="tab-follow"><span>关注</span></div>
+       <div class="tab-friend"><span>朋友</span></div>
+     </div>`,
   manualChannel = false,
   autoDone = false,
+  logSink = null,
 } = {}) {
-  const tabsHtml = withNativeTabs
-    ? `<div id="douyin-navigation" data-e2e="douyin-navigation">
-         <div class="tab-recommend">推荐</div>
-         <div class="tab-discover">精选</div>
-         <div class="tab-follow">关注</div>
-         <div class="tab-friend">朋友</div>
-       </div>`
-    : "";
   const dom = new JSDOM(
     `<html><head></head><body>${tabsHtml}<div id="douyin-header"></div><div id="douyin-right-container"><div class="basePlayerContainer"><div class="positionBox"></div></div></div></body></html>`,
     { url: "https://www.douyin.com/", runScripts: "outside-only" },
@@ -48,8 +47,8 @@ function loadScript({
       replace(url) { this.href = url; this.replaced = url; },
     },
     sessionStorage: makeStorage({
-      ...(manualChannel ? { "douyin-pure-channel-manual": "1" } : {}),
-      ...(autoDone ? { "douyin-pure-auto-done": "1" } : {}),
+      ...(manualChannel ? { "douyin-pure-channel-manual-v13": "1" } : {}),
+      ...(autoDone ? { "douyin-pure-auto-done-v13": "1" } : {}),
     }),
     PointerEvent: realWindow.MouseEvent,
     MouseEvent: realWindow.MouseEvent,
@@ -63,7 +62,7 @@ function loadScript({
   const sandbox = {
     window,
     document: realWindow.document,
-    console,
+    console: logSink ? { log: (...a) => logSink.push(a) } : console,
     encodeURIComponent,
     setInterval: window.setInterval,
     clearInterval: window.clearInterval,
@@ -78,7 +77,7 @@ test("userscript metadata targets Douyin home with GPL license", () => {
   const metadata = source.match(/^\/\/ ==UserScript==[\s\S]*?^\/\/ ==\/UserScript==/m)?.[0];
   assert.ok(metadata, "userscript metadata block must exist");
   assert.match(metadata, /@name\s+抖音网页版精简版/);
-  assert.match(metadata, /@version\s+1\.2\.0/);
+  assert.match(metadata, /@version\s+1\.3\.0/);
   assert.match(metadata, /@match\s+\*:\/\/www\.douyin\.com\/\*/);
   assert.match(metadata, /@grant\s+GM_addStyle/);
   assert.match(metadata, /@license\s+GPL-3\.0-or-later/);
@@ -156,8 +155,9 @@ test("empty keyword does not navigate", () => {
   const { window } = loadScript();
   const form = window.document.getElementById("douyin-pure-search");
   form.querySelector("input").value = "   ";
+  const before = window.location.href;
   form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
-  assert.equal(window.location.href, "https://www.douyin.com/?recommend=1");
+  assert.equal(window.location.href, before);
 });
 
 test("falls back to injected style tag when GM_addStyle is unavailable", () => {
@@ -175,7 +175,7 @@ test("DOMContentLoaded path also boots when readyState is loading", () => {
   assert.ok(window.document.getElementById("douyin-pure-search"), "mounted after DOM ready");
 });
 
-test("mounts a channel dock with four native-tab-backed links", () => {
+test("mounts a channel dock with four links", () => {
   const { window } = loadScript();
   const nav = window.document.getElementById("douyin-pure-channels");
   assert.ok(nav, "channel dock mounted");
@@ -189,49 +189,91 @@ test("mounts a channel dock with four native-tab-backed links", () => {
   }
 });
 
-test("finds native tabs even though they are visually hidden", () => {
-  const { api } = loadScript();
-  assert.equal(api.findNativeTab("recommend").textContent.trim(), "推荐");
-  assert.equal(api.findNativeTab("jingxuan").textContent.trim(), "精选");
-  assert.equal(api.findNativeTab("follow").textContent.trim(), "关注");
-  assert.equal(api.findNativeTab("friend").textContent.trim(), "朋友");
+// ===== 新增：自适应定位，不依赖猜测的 class =====
+
+test("finds native entry by TEXT even when classes are totally different", () => {
+  // 模拟抖音改版：class 全部哈希化，旧的 .tab-* 选择器完全失效。
+  const hashedTabs = `<div id="douyin-navigation" data-e2e="douyin-navigation">
+    <div class="x8f2a"><span>推荐</span></div>
+    <div class="k9d1c"><span>精选</span></div>
+    <div class="q3j7b"><span>关注</span></div>
+    <div class="z5m2x"><span>朋友</span></div>
+  </div>`;
+  const { api } = loadScript({ tabsHtml: hashedTabs });
+  assert.equal(api.findChannelEntry("recommend").textContent.trim(), "推荐");
+  assert.equal(api.findChannelEntry("jingxuan").textContent.trim(), "精选");
+  assert.equal(api.findChannelEntry("follow").textContent.trim(), "关注");
+  assert.equal(api.findChannelEntry("friend").textContent.trim(), "朋友");
 });
 
-test("clicking 推荐 fires native tab click sequence, not a URL rewrite", () => {
-  const { window } = loadScript({ href: "https://www.douyin.com/jingxuan" });
-  const seen = [];
-  window.document.querySelector(".tab-recommend").addEventListener("click", () => seen.push("click"));
-  window.document.querySelector(".tab-recommend").addEventListener("mousedown", () => seen.push("mousedown"));
+test("finds native entry by text even outside the left navigation container", () => {
+  // 抖音可能把频道 tab 放在顶栏或其他容器；左栏内没有时要能全页兜底。
+  const movedTabs = `<div id="douyin-navigation" data-e2e="douyin-navigation"></div>
+    <div id="somewhere-else"><div class="h1"><span>推荐</span></div><div class="h2"><span>关注</span></div></div>`;
+  const { api } = loadScript({ tabsHtml: movedTabs });
+  assert.equal(api.findChannelEntry("recommend").textContent.trim(), "推荐");
+  assert.equal(api.findChannelEntry("follow").textContent.trim(), "关注");
+});
+
+test("finds native entry by data-e2e when no text node matches", () => {
+  // 图标型 tab：没有文字，但有语义化的 data-e2e。
+  const iconTabs = `<div id="douyin-navigation" data-e2e="douyin-navigation">
+    <a data-e2e="tab-recommend" href="/?recommend=1"></a>
+    <a data-e2e="tab-follow" href="/follow"></a>
+  </div>`;
+  const { api } = loadScript({ tabsHtml: iconTabs });
+  assert.equal(api.findChannelEntry("recommend").getAttribute("data-e2e"), "tab-recommend");
+  assert.equal(api.findChannelEntry("follow").getAttribute("data-e2e"), "tab-follow");
+});
+
+test("clicking 推荐 calls native click() on the matched entry, not a URL rewrite", () => {
+  const { window, logSink } = (() => {
+    const sink = [];
+    const loaded = loadScript({
+      href: "https://www.douyin.com/jingxuan",
+      logSink: sink,
+    });
+    return { window: loaded.window, logSink: sink };
+  })();
+  const tab = window.document.querySelector("#douyin-navigation > div");
+  let clicked = 0;
+  tab.addEventListener("click", () => clicked++);
   const link = window.document.querySelector('#douyin-pure-channels a[data-channel="recommend"]');
   link.dispatchEvent(new window.Event("click", { bubbles: true, cancelable: true }));
-  assert.ok(seen.includes("click"), "native tab received click");
-  assert.ok(seen.includes("mousedown"), "native tab received mousedown");
+  assert.equal(clicked, 1, "native entry received a click()");
   assert.equal(window.location.href, "https://www.douyin.com/jingxuan", "URL untouched: uses native router");
-  assert.equal(window.sessionStorage.getItem("douyin-pure-channel-manual"), "1");
-  assert.equal(window.sessionStorage.getItem("douyin-pure-channel"), "recommend");
+  assert.equal(window.sessionStorage.getItem("douyin-pure-channel-manual-v13"), "1");
+  assert.equal(window.sessionStorage.getItem("douyin-pure-channel-v13"), "recommend");
+  // log() 输出形如 ["[douyin-pure]", "activateChannel(%s) via %s on <%s>", id, via, tag]。
+  assert.ok(
+    logSink.some((a) => String(a[1] || "").includes("activateChannel") && a.includes("click")),
+    "logs native click path",
+  );
 });
 
-test("clicking each channel dispatches events on its own native tab", () => {
-  const cases = [
-    ["jingxuan", ".tab-discover"],
-    ["follow", ".tab-follow"],
-    ["friend", ".tab-friend"],
-  ];
-  for (const [id, selector] of cases) {
-    const { window } = loadScript();
+test("clicking each channel activates its own entry", () => {
+  const cases = ["jingxuan", "follow", "friend"];
+  for (const id of cases) {
+    const { window, api } = loadScript();
+    const entry = api.findChannelEntry(id);
     let clicked = 0;
-    window.document.querySelector(selector).addEventListener("click", () => clicked++);
+    entry.addEventListener("click", () => clicked++);
     window.document.querySelector(`#douyin-pure-channels a[data-channel="${id}"]`)
       .dispatchEvent(new window.Event("click", { bubbles: true, cancelable: true }));
-    assert.equal(clicked, 1, `${id} native tab clicked`);
+    assert.equal(clicked, 1, `${id} native entry clicked`);
   }
 });
 
-test("falls back to URL navigation when native tabs are absent", () => {
-  const { window, api } = loadScript({ withNativeTabs: false });
-  assert.equal(api.findNativeTab("recommend"), null);
+test("falls back to full URL when no native entry exists at all", () => {
+  const { window, api } = loadScript({ tabsHtml: "", href: "https://www.douyin.com/video/123" });
+  api._stopAuto(); // boot 会在类首页触发轮询，这里用非首页 href 并主动停止，避免 40 次轮询拖慢测试。
+  assert.equal(api.findChannelEntry("recommend"), null);
   assert.equal(api.activateChannel("recommend", false), "url");
-  assert.equal(window.location.href, "https://www.douyin.com/?recommend=1");
+  assert.equal(
+    window.location.href,
+    "https://www.douyin.com/?is_from_mobile_home=1&recommend=1",
+    "fallback URL includes is_from_mobile_home and recommend params",
+  );
 });
 
 test("channel dock highlights the activated channel", () => {
@@ -251,17 +293,16 @@ test("channel dock is mounted idempotently", () => {
   assert.equal(window.document.querySelectorAll("#douyin-pure-channels").length, 1);
 });
 
-test("auto enter recommend clicks native tab immediately on home", () => {
-  // readyState=loading 让 boot 延后，先断言初始状态，再派发 DOMContentLoaded 触发自动进入。
+test("auto enter recommend clicks native entry immediately on home", () => {
   const { dom, window, api } = loadScript({ href: "https://www.douyin.com/", readyState: "loading" });
   let clicked = 0;
-  window.document.querySelector(".tab-recommend").addEventListener("click", () => clicked++);
+  window.document.querySelector("#douyin-navigation > div").addEventListener("click", () => clicked++);
   assert.equal(api.shouldAutoEnter(), true, "home should auto-enter before boot");
   dom.window.document.dispatchEvent(new window.Event("DOMContentLoaded"));
   api._stopAuto();
-  assert.equal(clicked, 1, "native recommend tab clicked on boot");
-  assert.equal(window.sessionStorage.getItem("douyin-pure-auto-done"), "1");
-  assert.equal(window.sessionStorage.getItem("douyin-pure-channel-manual"), null, "auto does not mark manual");
+  assert.equal(clicked, 1, "native recommend entry clicked on boot");
+  assert.equal(window.sessionStorage.getItem("douyin-pure-auto-done-v13"), "1");
+  assert.equal(window.sessionStorage.getItem("douyin-pure-channel-manual-v13"), null, "auto does not mark manual");
 });
 
 test("auto enter recommend is skipped after manual choice or prior auto", () => {
@@ -300,4 +341,19 @@ test("channel dock styles are part of injected CSS", () => {
   const { api } = loadScript();
   assert.ok(api.style.includes(".douyin-pure-channels"));
   assert.ok(api.style.includes('[aria-current="page"]'));
+});
+
+test("diagnose() lists real DOM candidates for troubleshooting", () => {
+  const hashedTabs = `<div id="douyin-navigation" data-e2e="douyin-navigation">
+    <div class="abc123"><span>推荐</span></div>
+    <div class="def456"><span>精选</span></div>
+  </div>`;
+  const sink = [];
+  const { api } = loadScript({ tabsHtml: hashedTabs, logSink: sink });
+  const report = api.diagnose();
+  assert.equal(report.url, "https://www.douyin.com/?is_from_mobile_home=1&recommend=1");
+  assert.equal(report.channelCandidates.recommend.text, "推荐");
+  assert.equal(report.channelCandidates.jingxuan.text, "精选");
+  assert.ok(report.textCandidates.some((c) => c.text === "推荐"));
+  assert.ok(sink.some((a) => String(a[1]).includes("diagnose")), "diagnose logs to console");
 });
