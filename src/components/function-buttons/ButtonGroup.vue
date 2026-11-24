@@ -32,18 +32,18 @@ const isDouyin = (() => {
   }
 })();
 
-// 向下箭头：继续往下刷，对应抖音竖滑换直播间的方向
-const NEXT_ROOM_PATHS = [
-  "M462 130 h100 v500 h-100 z",
-  "M512 880 L168 536 L244 460 L512 728 L780 460 L856 536 Z",
-];
+// 「下一个」：播放器里的「跳到下一个」符号（三角 + 竖条），比向下箭头更像换一个
+const NEXT_ROOM_PATHS = ["M200 216 L620 512 L200 808 Z", "M738 216 h86 v592 h-86 z"];
 
-// 四宫格：推荐流首页（也就是被脚本隐藏掉的那个「直播」导航入口）
-const FEED_HOME_PATHS = [
-  "M132 132 h340 v340 h-340 z",
-  "M552 132 h340 v340 h-340 z",
-  "M132 552 h340 v340 h-340 z",
-  "M552 552 h340 v340 h-340 z",
+/*
+ * 「去推荐流」：播放框里一个三角，表示视频内容流，不是直播间。
+ * 框和三角必须写在同一个 path 里 —— fill-rule 只对单个 path 内的子路径算嵌套，
+ * 拆成多个 <path> 就成了三块实心方块。
+ */
+const FEED_PATHS = [
+  "M200 200 H824 A80 80 0 0 1 904 280 V744 A80 80 0 0 1 824 824 H200 A80 80 0 0 1 120 744 V280 A80 80 0 0 1 200 200 Z" +
+    "M230 310 V714 H794 V310 Z" +
+    "M446 384 V640 L678 512 Z",
 ];
 
 const scriptSwitchOn = ref(swt.script.isOn());
@@ -59,9 +59,17 @@ function switchAutoHighestImage() {
   swt.autoHighestImage.switch();
 }
 
-// 切到推荐流的下一个直播间。走了哪条降级路径打到控制台，出问题时好定位
-function switchNextRoom() {
-  console.debug("[pure-live] 切下一个推荐直播间：", goNextRoom());
+// 切到下一个推荐直播间：问接口要一个没看过的房间号再进去，走了哪条路打到控制台
+const nextRoomBusy = ref(false);
+async function switchNextRoom() {
+  if (nextRoomBusy.value) return;
+  nextRoomBusy.value = true;
+  try {
+    const result = await goNextRoom();
+    console.debug("[pure-live] 下一个直播间：", result.route, result.nickname || "");
+  } finally {
+    nextRoomBusy.value = false;
+  }
 }
 
 function openRecommendFeed() {
@@ -102,11 +110,12 @@ function openRecommendFeed() {
         <icon-action-button
           title="下一个推荐直播间"
           :paths="NEXT_ROOM_PATHS"
+          :class="{ 'is-busy': nextRoomBusy }"
           @click="switchNextRoom"
         />
         <icon-action-button
-          title="回推荐流首页"
-          :paths="FEED_HOME_PATHS"
+          title="去抖音推荐流"
+          :paths="FEED_PATHS"
           @click="openRecommendFeed"
         />
       </template>
@@ -148,6 +157,12 @@ function openRecommendFeed() {
 /* 关注失败时点亮图标，鼠标悬停看具体原因 */
 .button.has-error {
   opacity: 1;
+}
+
+/* 「下一个」正在向接口要房间号：点亮表示已经收到点击，别让人以为没反应 */
+.button.is-busy {
+  opacity: 1;
+  cursor: progress;
 }
 
 .button:hover {

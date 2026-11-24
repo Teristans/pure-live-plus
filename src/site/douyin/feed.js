@@ -14,24 +14,46 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
+/** 抖音网页版推荐流（短视频），也就是 App 底部那个「推荐」页 */
+export const RECOMMEND_FEED_URL = "https://www.douyin.com/?recommend=1";
+
 /**
- * 抖音直播的推荐流入口。
- *
- * 抖音自己的导航栏里「直播」就是这个地址；脚本把 `#douyin-navigation` 整个隐藏了，
- * 所以面板上补一个按钮把它还回来。
+ * 直播首页：打开后抖音会自己进一个推荐直播间。
+ * 接口取不到「下一个」时用它兜底，至少还是换一个直播间。
  */
-export const RECOMMEND_FEED_URL = "https://live.douyin.com/?from_nav=1";
+export const LIVE_HOME_URL = "https://live.douyin.com/";
 
-/** 抖音直播间上下滑动切换推荐流直播间时，装房间的那个竖滑容器 */
-export const FEED_SCROLL_CONTAINER = "#_douyin_live_scroll_container_";
+/** 直播间网址前缀：`live.douyin.com/<主播 short_id>` 就是那个主播的直播间 */
+export const ROOM_URL_PREFIX = "https://live.douyin.com/";
 
-// 先让抖音自己处理滚轮；它没反应再用原生滚动；都没反应才退回推荐流首页。
-// 抖音切房后会把地址改成新房号，所以「地址变没变」就是最省事的成功判据。
-const WHEEL_GRACE_MS = 500;
-const SCROLL_GRACE_MS = 900;
+/** 推荐直播间列表接口：免签名，带 cookie 直接 GET 就能拿到 room 列表 */
+export const ROOM_FEED_PATH = "/webcast/feed/";
 
-/** 没有下一个可切时，最少还得有这么多可滚距离才认为抖音预加载了下一个直播间 */
-const MIN_SCROLLABLE_GAP = 48;
+/** 记下本次浏览会话里点过「下一个」的房间，保证连点一直往新房间走 */
+export const VISITED_KEY = "pure-live-visited-rooms";
+
+/** 最多记这么多个，避免 sessionStorage 无限增长 */
+const VISITED_LIMIT = 50;
+
+/** 推荐流接口的公共查询参数（缺了会被返回 "url doesn't match"） */
+const FEED_QUERY = {
+  aid: "6383",
+  app_name: "douyin_web",
+  live_id: "1",
+  device_platform: "web",
+  language: "zh-CN",
+  enter_from: "web_live",
+  cookie_enabled: "true",
+  screen_width: "1920",
+  screen_height: "1080",
+  browser_language: "zh-CN",
+  browser_platform: "Win32",
+  browser_name: "Mozilla",
+  browser_version: "5.0",
+  channel_id: "0",
+  count: "15",
+  offset: "0",
+};
 
 function resolveWindow(doc, win) {
   if (win) return win;
@@ -39,8 +61,77 @@ function resolveWindow(doc, win) {
   return typeof window === "undefined" ? null : window;
 }
 
+/** 当前房间的短号（网址末段），拿不到返回空串 */
+export function readCurrentShortId(win) {
+  const path = win?.location?.pathname;
+  if (typeof path !== "string") return "";
+  const last = path.split("/").filter(Boolean).pop() ?? "";
+  return /^\d+$/.test(last) ? last : "";
+}
+
+/** 拼推荐流接口地址；带上当前房间号，抖音会按它给相关推荐 */
+export function buildFeedUrl(currentShortId) {
+  const query = new URLSearchParams(FEED_QUERY);
+  if (currentShortId) query.set("web_rid", currentShortId);
+  return `${ROOM_FEED_PATH}?${query.toString()}`;
+}
+
+/** 读出这次会话已经刷过的房间号 */
+export function loadVisited(win) {
+  try {
+    const raw = win?.sessionStorage?.getItem(VISITED_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** 记下一个刷过的房间号（放最后，超出上限丢最早的） */
+export function rememberVisited(win, shortId) {
+  const id = String(shortId ?? "").trim();
+  if (!id) return;
+  try {
+    const list = loadVisited(win).filter((item) => item !== id);
+    list.push(id);
+    win?.sessionStorage?.setItem(VISITED_KEY, JSON.stringify(list.slice(-VISITED_LIMIT)));
+  } catch {
+    /* 隐私模式下 sessionStorage 可能不可写，忽略 */
+  }
+}
+
 /**
- * 回直播推荐流首页
+ * 从推荐流接口的返回里挑出下一个直播间
+ *
+ * 接口里 `data[*].data` 是房间，主播短号在 `owner.short_id` ——
+ * 实测这个值既能当进房接口的 web_rid，也就是 `live.douyin.com/<short_id>` 那个号。
+ *
+ * @param {object} payload 接口返回
+ * @param {object} [options]
+ * @param {string} [options.current] 当前房间号，要排除掉
+ * @param {string[]} [options.visited] 这次会话已经看过的房间号
+ * @returns {{shortId: string, nickname: string, roomId: string}|null}
+ */
+export function pickNextRoom(payload, { current = "", visited = [] } = {}) {
+  const items = Array.isArray(payload?.data) ? payload.data : [];
+  const skip = new Set([current, ...visited].map(String).filter(Boolean));
+  for (const item of items) {
+    const room = item?.data ?? item;
+    const owner = room?.owner ?? {};
+    const shortId = String(owner.short_id ?? "").trim();
+    // 短号是纯数字才能拼成直播间地址；别的形式（空、自定义 id）跳过
+    if (!/^\d+$/.test(shortId) || skip.has(shortId)) continue;
+    return {
+      shortId,
+      nickname: String(owner.nickname ?? "").trim(),
+      roomId: String(room?.id_str ?? ""),
+    };
+  }
+  return null;
+}
+
+/**
+ * 去抖音推荐流（短视频）
  * @returns {boolean} 是否发出跳转
  */
 export function goRecommendFeed(win) {
@@ -51,75 +142,41 @@ export function goRecommendFeed(win) {
 }
 
 /**
- * 派发一次合成滚轮事件，尽量走抖音自己的切换逻辑
+ * 进入下一个推荐直播间
  *
- * 抖音的竖滑多半是自己监听 wheel 再接管（否则滚动过程会撕裂出两个画面），
- * 所以「派发 wheel」比「改 scrollTop」更接近用户真实操作。
- */
-function dispatchWheel(container, win) {
-  const Wheel = win?.WheelEvent;
-  if (typeof Wheel !== "function" || typeof container.dispatchEvent !== "function") return false;
-  const rect = container.getBoundingClientRect?.();
-  const clientX = rect ? rect.left + rect.width / 2 : 0;
-  const clientY = rect ? rect.top + rect.height / 2 : 0;
-  container.dispatchEvent(
-    new Wheel("wheel", {
-      deltaY: container.clientHeight || 800,
-      deltaMode: 0,
-      bubbles: true,
-      cancelable: true,
-      clientX,
-      clientY,
-    }),
-  );
-  return true;
-}
-
-/**
- * 切到推荐流的下一个直播间
- *
- * 三级降级，保证按钮按下去一定有反应：
- * 1. 有竖滑容器且能往下滚 → 派发 wheel，交给抖音自己切；
- * 2. 抖音没接 → 原生 scrollBy 一屏；
- * 3. 还是没切 → 回推荐流首页（对用户来说同样是「换一个直播间」）。
+ * 抖音直播间的上下滑是它自己接管的，合成滚轮在真实页面里不一定生效，
+ * 所以这里不指望滑动，直接问接口要一个还没看过的房间号，然后整页开店。
  *
  * @param {object} [options]
  * @param {Document} [options.doc] 页面文档（测试注入）
  * @param {Window} [options.win] 页面窗口（测试注入）
- * @param {() => void} [options.onGiveUp] 彻底失败时的动作，默认回推荐流首页
- * @returns {"wheel"|"navigate"} 走了哪条路，便于控制台排查
+ * @returns {Promise<{route: "room"|"live-home"|"no-window", shortId?: string, nickname?: string}>}
+ *   route 说明走了哪条路，便于控制台排查
  */
-export function goNextRoom({ doc, win, onGiveUp } = {}) {
-  const document_ = doc ?? (typeof document === "undefined" ? null : document);
-  const window_ = resolveWindow(document_, win);
-  const giveUp =
-    typeof onGiveUp === "function" ? onGiveUp : () => goRecommendFeed(window_);
+export async function goNextRoom({ doc, win } = {}) {
+  const window_ = resolveWindow(doc, win);
+  if (!window_?.location) return { route: "no-window" };
 
-  const container = document_?.querySelector?.(FEED_SCROLL_CONTAINER) ?? null;
-  if (!container) {
-    giveUp();
-    return "navigate";
+  const current = readCurrentShortId(window_);
+  let next = null;
+  try {
+    if (typeof window_.fetch === "function") {
+      const res = await window_.fetch(buildFeedUrl(current), { credentials: "include" });
+      if (res && res.ok !== false) {
+        const payload = await res.json();
+        next = pickNextRoom(payload, { current, visited: loadVisited(window_) });
+      }
+    }
+  } catch {
+    /* 网络被拦 / 风控 / 返回不是 JSON：都走兜底 */
   }
 
-  const step = container.clientHeight || window_?.innerHeight || 0;
-  const gap = container.scrollHeight - container.clientHeight;
-  // 容器里只有当前这一个房间时，抖音没预加载下一个，滑动必然无效果 —— 直接换房间
-  if (gap < Math.max(MIN_SCROLLABLE_GAP, step / 2)) {
-    giveUp();
-    return "navigate";
+  if (!next) {
+    window_.location.href = LIVE_HOME_URL;
+    return { route: "live-home" };
   }
 
-  const before = window_?.location?.pathname ?? "";
-  const switched = () => (window_?.location?.pathname ?? "") !== before;
-
-  dispatchWheel(container, window_);
-  window_?.setTimeout?.(() => {
-    if (switched()) return;
-    container.scrollBy?.({ top: step, behavior: "smooth" });
-    window_?.setTimeout?.(() => {
-      if (!switched()) giveUp();
-    }, SCROLL_GRACE_MS);
-  }, WHEEL_GRACE_MS);
-
-  return "wheel";
+  rememberVisited(window_, next.shortId);
+  window_.location.href = `${ROOM_URL_PREFIX}${next.shortId}`;
+  return { route: "room", shortId: next.shortId, nickname: next.nickname };
 }

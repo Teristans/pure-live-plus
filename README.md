@@ -9,7 +9,7 @@
 
 | 脚本 | 用途 | 版本 | 一键安装 |
 |---|---|---|---|
-| 纯净直播（修改自用版） | 斗鱼 / 虎牙 / B站 / 抖音**直播**精简、自动最高画质 | v5.3.6 | [安装](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v5.3.6/pure-live.user.js) |
+| 纯净直播（修改自用版） | 斗鱼 / 虎牙 / B站 / 抖音**直播**精简、自动最高画质 | v5.3.7 | [安装](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v5.3.7/pure-live.user.js) |
 | [抖音网页版精简版](./douyin-pure/README.md) | 抖音**网页版视频**精简、清晰度智能 1080、悬浮菜单在左上角 | v1.4.0 | [安装](https://github.com/Teristans/pure-live-plus/releases/download/douyin-pure-v1.4.0/douyin-pure.user.js) |
 
 Release 页：https://github.com/Teristans/pure-live-plus/releases
@@ -30,6 +30,31 @@ Release 页：https://github.com/Teristans/pure-live-plus/releases
   - **斗鱼 / B站**：进入直播间后默认选择原生菜单中最高可用画质，主动展开延迟加载的画质菜单，兼容晚于 10 秒完成初始化的播放器；自动选择成功后停止干预，保留用户后续手动选择；关闭开关时不操作菜单。
   - **虎牙**：按 `iSortValue` 选择最高画质，解锁扫码限制（status=4），保留原画 `iBitRate=0`，通过 `unsafeWindow` 使用页面自身 jQuery；画质处理提前启动，避免播放器容器延迟创建时中断。
 - 构建配置固定 `vite` / `vitest` 版本，恢复正常生产构建。
+
+### v5.3.7
+
+**修掉 v5.3.5 那两个按钮的去向**（`src/site/douyin/feed.js` 重写）
+
+上一版两个按钮都落到直播页：点「下一个」时竖滑容器里本来就没预加载下一个房间，直接降级成跳
+`live.douyin.com`；点「回推荐流」指的又是直播首页，一进去还是某个直播间。这一版让按钮名字说什么就真去什么：
+
+- **下一个推荐直播间**：不再指望滑动，直接问抖音要数据。请求 `/webcast/feed/`（免签名，带 cookie 直接 GET）
+  拿推荐列表，取 `data[*].data.owner.short_id` —— 实测这个短号就是直播间地址里的号，
+  `live.douyin.com/<short_id>` 打开就是该主播的房间（昵称、标题都对得上）。
+  会跳过当前房间和本次已经刷过的房间（记在 `sessionStorage`），所以连点会一直往新房间走。
+  接口被拦或返回空列表时退回 `live.douyin.com`（至少还是换一个直播间，不会停在原地）。
+- **去抖音推荐流**：跳 `https://www.douyin.com/?recommend=1`，也就是抖音网页版的短视频推荐流。
+- 换图标：「下一个」改成播放器里的「跳到下一个」符号（三角 + 竖条），原来的向下箭头 + 底横线
+  确实就是下载图标；「去推荐流」改成带边框的播放框，表示视频内容流。
+
+踩到的坑：`fill-rule="evenodd"` 只在**单个 `path` 内**计算子路径嵌套。把外框 / 内框 / 三角拆成三个
+`<path>` 会各自填满，渲染成一个实心方块；合并进同一条 `d` 才是镂空效果。
+
+验证：headless Edge 注入构建产物到真实直播间——起点 `live.douyin.com/369324308707`（王濛），
+点「下一个」进去是 `live.douyin.com/3628331396`（吕德华），页面昵称同步变化；
+点「去抖音推荐流」落到 `https://www.douyin.com/?recommend=1`。
+测试重写为 10 项（接口地址与参数、挑下一个、跳过已看过的房间、短号非数字、两条兜底路径、sessionStorage 记忆），
+全量 85 项通过，lint 0 error。
 
 ### v5.3.6
 
@@ -97,6 +122,9 @@ Release 页：https://github.com/Teristans/pure-live-plus/releases
 匿名环境竖滑容器里没有下一个房间，点「下一个」正确降级为跳转 `live.douyin.com/?from_nav=1`。
 测试新增 `tests/douyin-feed.test.mjs` 7 项（三条降级路径、切房成功不再降级、跳转地址），
 全量 77 项通过，lint 0 error。
+
+> 这是 v5.3.5 当时的做法。滑动降级在真实页面里基本不生效，v5.3.7 已改成按接口返回的房间短号直达，
+> 两个按钮的行为与图标都换了，见上面的 v5.3.7。
 
 ### v5.3.4
 
@@ -191,7 +219,7 @@ v5.3.3 的做法是「旁听页面自己的进房请求」，实测不成立：�
 
 - 进入直播间自动选最高画质（原画优先，按文字识别，不依赖哈希类名）
 - 悬浮面板上有心形关注图标（空心红心=未关注，实心蓝心=已关注），点击即关注/取消关注；初始状态取自进房接口（`follow_info.follow_status`），点击结果以关注接口返回为准，失败原因显示在悬停提示里
-- 悬浮面板上有「下一个推荐直播间」（向下箭头）和「回推荐流首页」（四宫格）两个按钮：前者在当前页面内切到推荐流的下一个直播间，后者跳转 `live.douyin.com`（补回被脚本隐藏掉的「直播」导航入口）
+- 悬浮面板上有「下一个推荐直播间」（播放器的「下一个」符号）和「去抖音推荐流」（播放框）两个按钮：前者用 `/webcast/feed/` 取一个没看过的房间短号，直接进 `live.douyin.com/<短号>`；后者跳抖音网页版短视频推荐流 `www.douyin.com/?recommend=1`
 
 ## 构建与测试
 
@@ -203,7 +231,7 @@ pnpm run test:huya            # 虎牙画质测试（13 项）
 pnpm run test:bundle          # 成品脚本测试（6 项）
 pnpm run test:douyin-quality  # 抖音画质测试（7 项）
 pnpm run test:douyin-follow   # 抖音关注按钮测试（24 项）
-pnpm run test:douyin-feed     # 抖音推荐流按钮测试（7 项）
+pnpm run test:douyin-feed     # 抖音推荐流按钮测试（10 项）
 pnpm run test:douyu-gift      # 斗鱼礼物/福袋屏蔽测试（11 项）
 pnpm run test:all             # 以上全部
 ```
@@ -214,8 +242,8 @@ pnpm run test:all             # 以上全部
 
 **纯净直播（本脚本）**
 
-- 一键安装：[pure-live.user.js v5.3.6](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v5.3.6/pure-live.user.js)
-- Release 说明：[pure-live-v5.3.6](https://github.com/Teristans/pure-live-plus/releases/tag/pure-live-v5.3.6)
+- 一键安装：[pure-live.user.js v5.3.7](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v5.3.7/pure-live.user.js)
+- Release 说明：[pure-live-v5.3.7](https://github.com/Teristans/pure-live-plus/releases/tag/pure-live-v5.3.7)
 - 或自行构建：`pnpm install && pnpm build` 后导入 `dist/pure-live.user.js`
 - 安装后请只启用一份脚本（原版或本修改版二选一），避免重复执行
 
@@ -232,7 +260,7 @@ pnpm run test:all             # 以上全部
 
 - `@namespace` / `@homepage` / `@source`：`https://github.com/Teristans/pure-live-plus`
 - `@name`：纯净直播（pure live）修改自用版
-- `@version`：`5.3.6`
+- `@version`：`5.3.7`
 - `@license`：GPL-3.0-or-later
 
 当前发布状态：
@@ -244,5 +272,6 @@ pnpm run test:all             # 以上全部
 - [x] `pure-live-v5.3.4` 已发布：改为脚本自己请求进房接口取「我→主播」的 follow_status，修好初始状态。
 - [x] `pure-live-v5.3.5` 已发布：抖音面板新增「下一个推荐直播间」「回推荐流首页」两个按钮；修复子组件图标比同级按钮高 1px 的对齐问题。
 - [x] `pure-live-v5.3.6` 已发布：斗鱼改为自动勾选播放器设置里的 7 个屏蔽开关，礼物特效 / 福袋口令由斗鱼自己在数据层过滤，按文案删 DOM 降为兜底。
+- [x] `pure-live-v5.3.7` 已发布：「下一个」改为按 `/webcast/feed/` 的房间短号直接进下一个直播间，「去推荐流」改跳抖音短视频推荐流，两个图标一并更换。
 - [x] `LICENSE` 与原作者、修复贡献者署名完整保留。
-- [x] `@version` 从 `5.2.16` 升到 `5.3.6`（`5.3.0` 为首次发布的功能版本），作为本仓库的独立版本线。
+- [x] `@version` 从 `5.2.16` 升到 `5.3.7`（`5.3.0` 为首次发布的功能版本），作为本仓库的独立版本线。

@@ -24,7 +24,10 @@
 defineProps({
   /** 悬停提示，同时作为无障碍标签 */
   title: { type: String, required: true },
-  /** 图标路径数组：一个图标由多段 path 拼成（如箭头 = 竖条 + 三角） */
+  /**
+   * 图标路径数组：一个图标由多段 path 拼成（如「下一个」= 三角 + 竖条）。
+   * 统一用 evenodd 填充，这样「外框 + 内框」就能画出镂空的描边图形（如播放框）。
+   */
   paths: { type: Array, required: true },
   color: { type: String, default: "#2C9EFF" },
 });
@@ -35,7 +38,7 @@ const emit = defineEmits(["click"]);
 <template>
   <button class="button" :title="title" :aria-label="title" @click="emit('click')">
     <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="20" height="20">
-      <path v-for="(d, index) in paths" :key="index" :d="d" :fill="color" />
+      <path v-for="(d, index) in paths" :key="index" :d="d" :fill="color" fill-rule="evenodd" />
     </svg>
   </button>
 </template>
