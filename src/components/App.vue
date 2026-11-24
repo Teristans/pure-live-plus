@@ -1,5 +1,7 @@
 <!--
-  - pure-live, a script that make{ swt } purcommocommoneutilsathis progBulletChatletChat.vued/or modiBulletChat.vuefunction-bFunctionButtonsFunctionBcomponents/function-buttons.FunctionButtons.vuethe GNU General Public License as published by the Free Software Foundation,
+  - pure-live, a script that makes live webpages pure.
+  - Copyright (C) 2025-present ljezio
+  -
   - either version 3 of the License, or (at your option) any later version.
   -
   - This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;

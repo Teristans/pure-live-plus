@@ -25,6 +25,8 @@ export default function mountVue(topLayerEl, inputMaxlength, sendBulletChatFn) {
   app.mount(
     (() => {
       const div = document.createElement("div");
+      // 标记脚本自己的 UI，页面扫描（比如找原生关注按钮）时要跳过
+      div.setAttribute("data-pure-live-ui", "");
       document.body.append(div);
       return div;
     })(),

@@ -14,7 +14,15 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 import { swt } from "@/common/utils";
+import { hideDouyuGift } from "@/site/douyu/gift";
 import { watchDouyuQuality } from "@/site/douyu/quality";
+
+/**
+ * 屏蔽送礼物信息、礼物特效、福袋
+ */
+export function hideGiftModules() {
+  return hideDouyuGift({ document });
+}
 
 /**
  * 避免小窗口化

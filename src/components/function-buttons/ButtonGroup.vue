@@ -16,6 +16,7 @@
 <script setup>
 import { ref } from "vue";
 import { swt } from "@/common/utils";
+import FollowButton from "@/components/function-buttons/FollowButton.vue";
 
 const ON_COLOR = "#2C9EFF";
 const OFF_COLOR = "#D94A3C";
@@ -49,6 +50,7 @@ function switchAutoHighestImage() {
     </svg>
   </button>
   <div v-if="scriptSwitchOn">
+    <follow-button />
     <button
       class="button"
       @click="switchAutoHighestImage"

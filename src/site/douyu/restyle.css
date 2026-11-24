@@ -46,6 +46,38 @@ aside,
   display: none !important;
 }
 
+/* 屏蔽送礼物：全屏特效层、飘屏、礼物面板、福袋入口 */
+#js-player-effect,
+[class*="layout-Player-effect" i],
+[class*="GiftEffect" i],
+[class*="giftEffect" i],
+[class*="DanmuEffectBC" i],
+[class*="buffDanmu" i],
+[class*="GiftBanner" i],
+[class*="GiftCast" i],
+[class*="giftNotice" i],
+[class*="GiftSendSelector" i],
+[class*="GiftHall" i],
+[class*="GiftExpandPanel" i],
+[class*="ToolbarGiftArea" i],
+[class*="PlayerToolbar-GiftWrap" i],
+[class*="fudai" i],
+[class*="LuckyBag" i],
+[class*="RedPacket" i],
+[class*="Lottery" i],
+[class*="ChouJiang" i],
+[data-pure-live-hidden] {
+  display: none !important;
+}
+
+/* 播放器 / 工具栏 / 聊天区里任何礼物相关部件（含礼物按钮、礼物飘屏） */
+#js-player-main [class*="gift" i],
+#js-player-toolbar [class*="gift" i],
+#js-player-controlbar [class*="gift" i],
+#js-player-asideMain [class*="gift" i] {
+  display: none !important;
+}
+
 /* 播放器占满网页 */
 #root,
 #js-player-main {

@@ -13,28 +13,17 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-import { delayJitter, swt } from "@/common/utils";
+import { swt } from "@/common/utils";
+import { watchDouyinQuality } from "@/site/douyin/quality";
 
 /**
  * 自动切换最高画质
  */
 export function autoHighestImage() {
-  if (swt.autoHighestImage.isOff()) return;
-  const control = document.querySelector(".douyin-player-controls-right");
-  if (!control) return;
-  const observer = new MutationObserver(async (mutations) => {
-    for (const mutation of mutations) {
-      for (const node of mutation.addedNodes) {
-        if (node.localName !== "div" || !node.className.includes("QualitySwitchNewPlugin"))
-          continue;
-        observer.disconnect();
-        node.querySelector('[data-e2e="quality-selector"] > :nth-child(2)')?.click();
-        return;
-      }
-    }
+  return watchDouyinQuality({
+    document,
+    shouldSwitch: () => swt.autoHighestImage.isOn(),
   });
-  observer.observe(control, { childList: true, subtree: true });
-  delayJitter(10).then(() => observer.disconnect());
 }
 
 /**

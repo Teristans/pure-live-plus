@@ -26,5 +26,12 @@ const platformMap = new Map([
 ]);
 
 (() => {
-  platformMap.get(window.location.hostname)?.();
+  const init = platformMap.get(window.location.hostname);
+  if (!init) return;
+  try {
+    // 抖音的初始化是异步的（要等播放器挂载），异常不要冒到控制台顶层
+    Promise.resolve(init()).catch((e) => console.error("[pure-live]", e));
+  } catch (e) {
+    console.error("[pure-live]", e);
+  }
 })();

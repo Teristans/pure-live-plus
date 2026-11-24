@@ -16,7 +16,7 @@
 import { INPUT_MAX } from "@/common/constants";
 import { swt } from "@/common/utils";
 import mountVue from "@/components";
-import { autoHighestImage, avoidSmallWindow, dbClick, sendBulletChatFn } from "@/site/douyu/core";
+import { autoHighestImage, avoidSmallWindow, dbClick, hideGiftModules, sendBulletChatFn } from "@/site/douyu/core";
 
 export default function pureDouyu() {
   // 非直播页面不执行脚本
@@ -26,6 +26,7 @@ export default function pureDouyu() {
   if (swt.script.isOn()) {
     import("@/site/douyu/restyle.css").catch((e) => console.error(e));
     avoidSmallWindow();
+    hideGiftModules();
     autoHighestImage();
     dbClick(player);
   }
