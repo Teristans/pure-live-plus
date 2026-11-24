@@ -20,26 +20,42 @@ function loadScript({
   withGM = true,
   readyState = "complete",
   href = "https://www.douyin.com/?recommend=1",
+  withNativeTabs = true,
   manualChannel = false,
+  autoDone = false,
 } = {}) {
+  const tabsHtml = withNativeTabs
+    ? `<div id="douyin-navigation" data-e2e="douyin-navigation">
+         <div class="tab-recommend">推荐</div>
+         <div class="tab-discover">精选</div>
+         <div class="tab-follow">关注</div>
+         <div class="tab-friend">朋友</div>
+       </div>`
+    : "";
   const dom = new JSDOM(
-    `<html><head></head><body><div id="douyin-header"></div><div id="douyin-navigation"></div><div id="douyin-right-container"><div class="basePlayerContainer"><div class="positionBox"></div></div></div></body></html>`,
+    `<html><head></head><body>${tabsHtml}<div id="douyin-header"></div><div id="douyin-right-container"><div class="basePlayerContainer"><div class="positionBox"></div></div></div></body></html>`,
     { url: "https://www.douyin.com/", runScripts: "outside-only" },
   );
   const realWindow = dom.window;
   Object.defineProperty(realWindow.document, "readyState", { value: readyState, configurable: true });
 
-  // jsdom 的 location.href 拒绝跨源导航赋值，用一个可写的假 window 让导航可断言。
+  // jsdom 的 location.href 拒绝跨源导航赋值，用可写的假 window 让导航可断言。
   const window = {
     document: realWindow.document,
     location: {
       href,
+      assign(url) { this.href = url; this.assigned = url; },
       replace(url) { this.href = url; this.replaced = url; },
     },
-    sessionStorage: makeStorage(
-      manualChannel ? { "douyin-pure-channel-manual": "1" } : {},
-    ),
+    sessionStorage: makeStorage({
+      ...(manualChannel ? { "douyin-pure-channel-manual": "1" } : {}),
+      ...(autoDone ? { "douyin-pure-auto-done": "1" } : {}),
+    }),
+    PointerEvent: realWindow.MouseEvent,
+    MouseEvent: realWindow.MouseEvent,
     Event: realWindow.Event,
+    setInterval: realWindow.setInterval.bind(realWindow),
+    clearInterval: realWindow.clearInterval.bind(realWindow),
     addEventListener: realWindow.addEventListener.bind(realWindow),
   };
 
@@ -49,19 +65,20 @@ function loadScript({
     document: realWindow.document,
     console,
     encodeURIComponent,
+    setInterval: window.setInterval,
+    clearInterval: window.clearInterval,
     GM_addStyle: withGM ? (css) => styles.push(css) : undefined,
   };
-  // 让脚本内的裸 GM_addStyle 在未 grant 时确实 undefined
   if (!withGM) sandbox.GM_addStyle = undefined;
   runInNewContext(source, sandbox);
   return { dom, window, styles, api: window.DouyinPure };
 }
 
-test("userscript metadata is present and targets Douyu-free Douyin home", () => {
+test("userscript metadata targets Douyin home with GPL license", () => {
   const metadata = source.match(/^\/\/ ==UserScript==[\s\S]*?^\/\/ ==\/UserScript==/m)?.[0];
   assert.ok(metadata, "userscript metadata block must exist");
   assert.match(metadata, /@name\s+抖音网页版精简版/);
-  assert.match(metadata, /@version\s+1\.1\.0/);
+  assert.match(metadata, /@version\s+1\.2\.0/);
   assert.match(metadata, /@match\s+\*:\/\/www\.douyin\.com\/\*/);
   assert.match(metadata, /@grant\s+GM_addStyle/);
   assert.match(metadata, /@license\s+GPL-3\.0-or-later/);
@@ -85,14 +102,13 @@ test("hides top bar, left navigation and ads", () => {
 test("keeps player controls, settings and interaction widgets intact", () => {
   const { api } = loadScript();
   const css = api.style;
-  // 这些元素必须没有被加入隐藏规则（隐藏块以 display:none 结尾，逐个核对选择器不出现）
   for (const preserved of [
     ".positionBox",
     ".basePlayerContainer",
     ".xgplayer",
-    "[data-e2e=\"like-icon\"]",
-    "[data-e2e=\"comment-icon\"]",
-    "[data-e2e=\"video-avatar\"]",
+    '[data-e2e="like-icon"]',
+    '[data-e2e="comment-icon"]',
+    '[data-e2e="video-avatar"]',
   ]) {
     assert.ok(!css.includes(preserved), `CSS must NOT hide preserved element ${preserved}`);
   }
@@ -148,7 +164,7 @@ test("falls back to injected style tag when GM_addStyle is unavailable", () => {
   const { window, styles } = loadScript({ withGM: false });
   assert.equal(styles.length, 0);
   const styleTags = window.document.querySelectorAll("style");
-  assert.ok(styleTags.length >= 1, "a style element is appended");
+  assert.ok(styleTags.length >= 1);
   assert.ok(styleTags[0].textContent.includes("#douyin-header"));
 });
 
@@ -159,39 +175,73 @@ test("DOMContentLoaded path also boots when readyState is loading", () => {
   assert.ok(window.document.getElementById("douyin-pure-search"), "mounted after DOM ready");
 });
 
-test("mounts a channel dock replacing the hidden left navigation", () => {
+test("mounts a channel dock with four native-tab-backed links", () => {
   const { window } = loadScript();
   const nav = window.document.getElementById("douyin-pure-channels");
   assert.ok(nav, "channel dock mounted");
   assert.equal(nav.tagName, "NAV");
-  const links = [...nav.querySelectorAll("a")];
-  assert.deepEqual(links.map((a) => a.textContent), ["推荐", "精选", "关注", "朋友"]);
   assert.deepEqual(
-    links.map((a) => a.getAttribute("href")),
-    [
-      "https://www.douyin.com/?recommend=1",
-      "https://www.douyin.com/",
-      "https://www.douyin.com/follow",
-      "https://www.douyin.com/friend",
-    ],
+    [...nav.querySelectorAll("a")].map((a) => a.textContent),
+    ["推荐", "精选", "关注", "朋友"],
   );
+  for (const id of ["recommend", "jingxuan", "follow", "friend"]) {
+    assert.ok(nav.querySelector(`a[data-channel="${id}"]`), `link ${id} exists`);
+  }
 });
 
-test("channel dock highlights the current channel", () => {
+test("finds native tabs even though they are visually hidden", () => {
+  const { api } = loadScript();
+  assert.equal(api.findNativeTab("recommend").textContent.trim(), "推荐");
+  assert.equal(api.findNativeTab("jingxuan").textContent.trim(), "精选");
+  assert.equal(api.findNativeTab("follow").textContent.trim(), "关注");
+  assert.equal(api.findNativeTab("friend").textContent.trim(), "朋友");
+});
+
+test("clicking 推荐 fires native tab click sequence, not a URL rewrite", () => {
+  const { window } = loadScript({ href: "https://www.douyin.com/jingxuan" });
+  const seen = [];
+  window.document.querySelector(".tab-recommend").addEventListener("click", () => seen.push("click"));
+  window.document.querySelector(".tab-recommend").addEventListener("mousedown", () => seen.push("mousedown"));
+  const link = window.document.querySelector('#douyin-pure-channels a[data-channel="recommend"]');
+  link.dispatchEvent(new window.Event("click", { bubbles: true, cancelable: true }));
+  assert.ok(seen.includes("click"), "native tab received click");
+  assert.ok(seen.includes("mousedown"), "native tab received mousedown");
+  assert.equal(window.location.href, "https://www.douyin.com/jingxuan", "URL untouched: uses native router");
+  assert.equal(window.sessionStorage.getItem("douyin-pure-channel-manual"), "1");
+  assert.equal(window.sessionStorage.getItem("douyin-pure-channel"), "recommend");
+});
+
+test("clicking each channel dispatches events on its own native tab", () => {
   const cases = [
-    ["https://www.douyin.com/?recommend=1", "recommend"],
-    ["https://www.douyin.com/", "jingxuan"],
-    ["https://www.douyin.com/follow", "follow"],
-    ["https://www.douyin.com/friend", "friend"],
-    ["https://www.douyin.com/video/123", "jingxuan"],
+    ["jingxuan", ".tab-discover"],
+    ["follow", ".tab-follow"],
+    ["friend", ".tab-friend"],
   ];
-  for (const [href, expected] of cases) {
-    // manualChannel 阻止自动跳转，保证此处的 href 用于断言高亮判断本身。
-    const { window, api } = loadScript({ href, manualChannel: true });
-    assert.equal(api.currentChannelId(), expected, `URL ${href} maps to ${expected}`);
-    const active = window.document.querySelector("#douyin-pure-channels a[aria-current='page']");
-    assert.equal(active?.getAttribute("data-channel"), expected);
+  for (const [id, selector] of cases) {
+    const { window } = loadScript();
+    let clicked = 0;
+    window.document.querySelector(selector).addEventListener("click", () => clicked++);
+    window.document.querySelector(`#douyin-pure-channels a[data-channel="${id}"]`)
+      .dispatchEvent(new window.Event("click", { bubbles: true, cancelable: true }));
+    assert.equal(clicked, 1, `${id} native tab clicked`);
   }
+});
+
+test("falls back to URL navigation when native tabs are absent", () => {
+  const { window, api } = loadScript({ withNativeTabs: false });
+  assert.equal(api.findNativeTab("recommend"), null);
+  assert.equal(api.activateChannel("recommend", false), "url");
+  assert.equal(window.location.href, "https://www.douyin.com/?recommend=1");
+});
+
+test("channel dock highlights the activated channel", () => {
+  const { window } = loadScript();
+  window.document.querySelector('#douyin-pure-channels a[data-channel="follow"]')
+    .dispatchEvent(new window.Event("click", { bubbles: true, cancelable: true }));
+  assert.equal(
+    window.document.querySelector('#douyin-pure-channels a[aria-current="page"]').getAttribute("data-channel"),
+    "follow",
+  );
 });
 
 test("channel dock is mounted idempotently", () => {
@@ -201,34 +251,48 @@ test("channel dock is mounted idempotently", () => {
   assert.equal(window.document.querySelectorAll("#douyin-pure-channels").length, 1);
 });
 
-test("clicking a channel marks manual choice so auto-redirect will not fight it", () => {
-  const { window } = loadScript({ href: "https://www.douyin.com/?recommend=1" });
-  const jingxuan = window.document.querySelector("#douyin-pure-channels a[data-channel='jingxuan']");
-  jingxuan.dispatchEvent(new window.Event("click", { bubbles: true }));
-  assert.equal(window.sessionStorage.getItem("douyin-pure-channel-manual"), "1");
+test("auto enter recommend clicks native tab immediately on home", () => {
+  // readyState=loading 让 boot 延后，先断言初始状态，再派发 DOMContentLoaded 触发自动进入。
+  const { dom, window, api } = loadScript({ href: "https://www.douyin.com/", readyState: "loading" });
+  let clicked = 0;
+  window.document.querySelector(".tab-recommend").addEventListener("click", () => clicked++);
+  assert.equal(api.shouldAutoEnter(), true, "home should auto-enter before boot");
+  dom.window.document.dispatchEvent(new window.Event("DOMContentLoaded"));
+  api._stopAuto();
+  assert.equal(clicked, 1, "native recommend tab clicked on boot");
+  assert.equal(window.sessionStorage.getItem("douyin-pure-auto-done"), "1");
+  assert.equal(window.sessionStorage.getItem("douyin-pure-channel-manual"), null, "auto does not mark manual");
 });
 
-test("bare home auto-redirects to the recommend feed", () => {
-  const { window } = loadScript({ href: "https://www.douyin.com/" });
-  assert.equal(window.location.replaced, "https://www.douyin.com/?recommend=1");
-  assert.equal(window.location.href, "https://www.douyin.com/?recommend=1");
+test("auto enter recommend is skipped after manual choice or prior auto", () => {
+  for (const opts of [{ manualChannel: true }, { autoDone: true }]) {
+    const { api } = loadScript({ href: "https://www.douyin.com/", ...opts });
+    assert.equal(api.shouldAutoEnter(), false);
+    api.autoEnterRecommend();
+    api._stopAuto();
+  }
 });
 
-test("bare home does not redirect after a manual channel choice", () => {
-  const { window } = loadScript({ href: "https://www.douyin.com/", manualChannel: true });
-  assert.equal(window.location.replaced, undefined);
-  assert.equal(window.location.href, "https://www.douyin.com/");
-});
-
-test("auto-redirect leaves non-home pages untouched", () => {
+test("auto enter recommend is skipped on non-home pages", () => {
   for (const href of [
-    "https://www.douyin.com/?recommend=1",
     "https://www.douyin.com/video/123",
     "https://www.douyin.com/follow",
+    "https://www.douyin.com/user/abc",
   ]) {
-    const { window } = loadScript({ href });
-    assert.equal(window.location.replaced, undefined, `no redirect for ${href}`);
-    assert.equal(window.location.href, href);
+    const { api } = loadScript({ href });
+    assert.equal(api.shouldAutoEnter(), false, `no auto for ${href}`);
+    api._stopAuto();
+  }
+});
+
+test("isHomeLike recognizes root and jingxuan paths only", () => {
+  for (const href of ["https://www.douyin.com/", "https://www.douyin.com/jingxuan"]) {
+    const { api } = loadScript({ href });
+    assert.equal(api.isHomeLike(), true);
+  }
+  for (const href of ["https://www.douyin.com/video/1", "https://www.douyin.com/search/x"]) {
+    const { api } = loadScript({ href });
+    assert.equal(api.isHomeLike(), false);
   }
 });
 
