@@ -23,6 +23,8 @@ import { douyinFollow } from "@/site/douyin/follow";
 const PLAYER_SELECTOR = '#_douyin_live_scroll_container_, [data-e2e="live-player"]';
 
 export default async function pureDouyin() {
+  // 进房接口比播放器挂载早得多，先挂上旁听，才拿得到「进房时是否已关注」这个真值
+  if (swt.script.isOn()) douyinFollow.watch(document);
   // 播放器可能晚于脚本挂载，等一会儿；超时说明不是直播页面
   const player = await waitForElement(document, PLAYER_SELECTOR, { timeoutMs: 8000 });
   if (!player) return;

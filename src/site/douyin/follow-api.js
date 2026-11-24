@@ -26,8 +26,17 @@
  */
 const FOLLOW_ENDPOINT = "/webcast/user/relation/update/";
 
+// 进房接口：它的响应里带着「我和这个主播」的关注关系，是进入直播间时唯一可信的状态来源
+const ENTER_ENDPOINT_RE = /\/webcast\/room\/(?:web\/)?enter\//;
+
 // 抖音关注关系：0 未关注、1 已关注、2 互相关注、3 对方关注了我
 const FOLLOWING_STATUS = new Set([1, 2]);
+
+/** follow_status → 是否已关注（不是数字就返回 undefined，表示不下结论） */
+export function isFollowingStatus(status) {
+  if (typeof status !== "number") return undefined;
+  return FOLLOWING_STATUS.has(status);
+}
 
 /** 响应体 → 统一结果 */
 export function toFollowResult(payload, { verifyRequired = false } = {}) {
@@ -58,6 +67,35 @@ function needsVerify(headers) {
 }
 
 /**
+ * 从进房接口的响应里挖出「当前用户 → 主播」的关注关系
+ *
+ * 抖音把关注关系放在 `owner.follow_info.follow_status` 这类结构里，
+ * 层级随版本变，所以按键名递归找 follow_info，连同主播的 web_rid 一起带回来
+ * （web_rid 就是直播间 URL 里那串数字，用来挡掉「预加载别的直播间」的数据）。
+ *
+ * @returns {{followStatus: number, webRid: string}|null} 找不到就返回 null
+ */
+export function extractRoomRelation(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  const stack = [{ node: payload, depth: 0 }];
+  let budget = 4000;
+  while (stack.length && budget > 0) {
+    budget -= 1;
+    const { node, depth } = stack.pop();
+    if (!node || typeof node !== "object" || depth > 6) continue;
+    const info = node.follow_info;
+    if (info && typeof info === "object" && typeof info.follow_status === "number") {
+      const rid = node.web_rid ?? node.webRid ?? "";
+      return { followStatus: info.follow_status, webRid: rid === 0 ? "" : String(rid) };
+    }
+    for (const value of Object.values(node)) {
+      if (value && typeof value === "object") stack.push({ node: value, depth: depth + 1 });
+    }
+  }
+  return null;
+}
+
+/**
  * 读取 XHR 响应体
  * @returns {object|null|undefined} undefined 表示读不出来，不要据此判断成败
  */
@@ -82,12 +120,28 @@ function readXhrPayload(xhr) {
 /**
  * 开始观测关注接口
  * @param {Window} win 页面窗口（document.defaultView，不用脚本沙箱里的 window）
- * @param {(result: object) => void} onResult 收到关注接口响应时回调
+ * @param {object} handlers
+ * @param {(result: object) => void} [handlers.onResult] 收到「关注 / 取关」响应时回调
+ * @param {(relation: object) => void} [handlers.onSnapshot] 收到进房接口里的关注关系时回调
  * @returns {() => void} 取消观测
  */
-export function watchFollowApi(win, onResult) {
-  if (!win || typeof onResult !== "function") return () => {};
+export function watchFollowApi(win, { onResult, onSnapshot } = {}) {
+  if (!win) return () => {};
+  const hasResult = typeof onResult === "function";
+  const hasSnapshot = typeof onSnapshot === "function";
+  if (!hasResult && !hasSnapshot) return () => {};
   const restores = [];
+
+  const reportSnapshot = (payload) => {
+    if (!hasSnapshot) return;
+    const relation = extractRoomRelation(payload);
+    if (!relation) return;
+    try {
+      onSnapshot(relation);
+    } catch {
+      /* 回调异常不影响页面 */
+    }
+  };
 
   // —— fetch ——
   try {
@@ -102,18 +156,24 @@ export function watchFollowApi(win, onResult) {
         } catch {
           url = "";
         }
-        if (!url.includes(FOLLOW_ENDPOINT) || !promise?.then) return promise;
+        const isFollow = hasResult && url.includes(FOLLOW_ENDPOINT);
+        const isEnter = hasSnapshot && ENTER_ENDPOINT_RE.test(url);
+        if ((!isFollow && !isEnter) || !promise?.then) return promise;
         return promise.then((res) => {
           try {
-            const verifyRequired = needsVerify(res?.headers);
-            res
-              ?.clone?.()
-              .json?.()
-              .then((payload) => onResult(toFollowResult(payload, { verifyRequired })))
-              // 拿不到响应体就不下结论，免得把「读不到」当成「关注失败」
-              .catch(() => {
-                if (verifyRequired) onResult(toFollowResult(null, { verifyRequired }));
-              });
+            if (isFollow) {
+              const verifyRequired = needsVerify(res?.headers);
+              res
+                ?.clone?.()
+                .json?.()
+                .then((payload) => onResult(toFollowResult(payload, { verifyRequired })))
+                // 拿不到响应体就不下结论，免得把「读不到」当成「关注失败」
+                .catch(() => {
+                  if (verifyRequired) onResult(toFollowResult(null, { verifyRequired }));
+                });
+            } else {
+              res?.clone?.().json?.().then(reportSnapshot).catch(() => {});
+            }
           } catch {
             /* 观测失败不影响页面 */
           }
@@ -145,11 +205,16 @@ export function watchFollowApi(win, onResult) {
       };
       const patchedSend = function (...args) {
         try {
-          if (String(this.__pureLiveUrl || "").includes(FOLLOW_ENDPOINT)) {
+          const url = String(this.__pureLiveUrl || "");
+          const isFollow = hasResult && url.includes(FOLLOW_ENDPOINT);
+          const isEnter = hasSnapshot && ENTER_ENDPOINT_RE.test(url);
+          if (isFollow || isEnter) {
             this.addEventListener("load", () => {
               const payload = readXhrPayload(this);
               // undefined 表示响应体读不出来（如 arraybuffer），此时不下结论
-              if (payload !== undefined) onResult(toFollowResult(payload));
+              if (payload === undefined || payload === null) return;
+              if (isFollow) onResult(toFollowResult(payload));
+              else reportSnapshot(payload);
             });
           }
         } catch {

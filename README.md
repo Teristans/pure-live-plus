@@ -9,7 +9,7 @@
 
 | 脚本 | 用途 | 版本 | 一键安装 |
 |---|---|---|---|
-| 纯净直播（修改自用版） | 斗鱼 / 虎牙 / B站 / 抖音**直播**精简、自动最高画质 | v5.3.2 | [安装](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v5.3.2/pure-live.user.js) |
+| 纯净直播（修改自用版） | 斗鱼 / 虎牙 / B站 / 抖音**直播**精简、自动最高画质 | v5.3.3 | [安装](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v5.3.3/pure-live.user.js) |
 | [抖音网页版精简版](./douyin-pure/README.md) | 抖音**网页版视频**精简、清晰度智能 1080、悬浮菜单在左上角 | v1.4.0 | [安装](https://github.com/Teristans/pure-live-plus/releases/download/douyin-pure-v1.4.0/douyin-pure.user.js) |
 
 Release 页：https://github.com/Teristans/pure-live-plus/releases
@@ -30,6 +30,17 @@ Release 页：https://github.com/Teristans/pure-live-plus/releases
   - **斗鱼 / B站**：进入直播间后默认选择原生菜单中最高可用画质，主动展开延迟加载的画质菜单，兼容晚于 10 秒完成初始化的播放器；自动选择成功后停止干预，保留用户后续手动选择；关闭开关时不操作菜单。
   - **虎牙**：按 `iSortValue` 选择最高画质，解锁扫码限制（status=4），保留原画 `iBitRate=0`，通过 `unsafeWindow` 使用页面自身 jQuery；画质处理提前启动，避免播放器容器延迟创建时中断。
 - 构建配置固定 `vite` / `vitest` 版本，恢复正常生产构建。
+
+### v5.3.3
+
+**修复「进入已关注的直播间显示空心红心，点一下却提示取消关注成功」**（`src/site/douyin/follow.js` + `follow-api.js`）
+
+- 根因：已关注状态完全靠页面文案判断。抖音会把「关注 / 已关注」两个按钮同时渲染出来、只显示其中一个，或者文案还没跟上真实关系；脚本按选择器取到的是「关注」，于是显示空心，而这一点点下去的其实是取关，抖音回「取消关注成功」。
+- 新增**进房接口真值**：旁听 `/webcast/room/web/enter/` 的响应，从 `owner.follow_info.follow_status` 读出「我 → 主播」的真实关系（0 未关注 / 1 已关注 / 2 互相关注）。这是进入直播间那一刻唯一不受 DOM 影响的依据。
+  - 这个旁听在等播放器之前就挂上——进房接口比播放器挂载早得多，挂晚了就永远拿不到。
+  - 抖音会预加载别的直播间，这类数据的 `web_rid` 和当前地址对不上，直接丢弃，不会串房间。
+- 原生按钮的挑选改成分层 + 去重：先认 `data-e2e` / class 上的 follow 标记，同级候选里优先可见的那个；同一块头部里一个说「关注」一个说「已关注」时，以「已关注」为准。
+- 状态读不出来（按钮只剩图标、文案为空）时保持上一次的显示，不再凭猜测把蓝心刷成空心。
 
 ### v5.3.2
 
@@ -86,7 +97,7 @@ Release 页：https://github.com/Teristans/pure-live-plus/releases
 ### 🎶抖音直播（douyin）
 
 - 进入直播间自动选最高画质（原画优先，按文字识别，不依赖哈希类名）
-- 悬浮面板上有心形关注图标（空心红心=未关注，实心蓝心=已关注），点击即关注/取消关注；状态以关注接口返回为准，失败原因显示在悬停提示里
+- 悬浮面板上有心形关注图标（空心红心=未关注，实心蓝心=已关注），点击即关注/取消关注；初始状态取自进房接口（`follow_info.follow_status`），点击结果以关注接口返回为准，失败原因显示在悬停提示里
 
 ## 构建与测试
 
@@ -97,7 +108,7 @@ pnpm run test:quality         # 斗鱼 / B站画质测试（14 项）
 pnpm run test:huya            # 虎牙画质测试（13 项）
 pnpm run test:bundle          # 成品脚本测试（6 项）
 pnpm run test:douyin-quality  # 抖音画质测试（7 项）
-pnpm run test:douyin-follow   # 抖音关注按钮测试（13 项）
+pnpm run test:douyin-follow   # 抖音关注按钮测试（22 项）
 pnpm run test:douyu-gift      # 斗鱼礼物/福袋屏蔽测试（6 项）
 pnpm run test:all             # 以上全部
 ```
@@ -108,8 +119,8 @@ pnpm run test:all             # 以上全部
 
 **纯净直播（本脚本）**
 
-- 一键安装：[pure-live.user.js v5.3.2](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v5.3.2/pure-live.user.js)
-- Release 说明：[pure-live-v5.3.2](https://github.com/Teristans/pure-live-plus/releases/tag/pure-live-v5.3.2)
+- 一键安装：[pure-live.user.js v5.3.3](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v5.3.3/pure-live.user.js)
+- Release 说明：[pure-live-v5.3.3](https://github.com/Teristans/pure-live-plus/releases/tag/pure-live-v5.3.3)
 - 或自行构建：`pnpm install && pnpm build` 后导入 `dist/pure-live.user.js`
 - 安装后请只启用一份脚本（原版或本修改版二选一），避免重复执行
 
@@ -126,13 +137,14 @@ pnpm run test:all             # 以上全部
 
 - `@namespace` / `@homepage` / `@source`：`https://github.com/Teristans/pure-live-plus`
 - `@name`：纯净直播（pure live）修改自用版
-- `@version`：`5.3.2`
+- `@version`：`5.3.3`
 - `@license`：GPL-3.0-or-later
 
 当前发布状态：
 
 - [x] 已发布 Release：`pure-live-v5.2.16`（本脚本）、`douyin-pure-v1.4.0`（抖音脚本），下载入口已补入 README。
 - [x] `pure-live-v5.3.0` 已发布：tag `pure-live-v5.3.0` + Release 资产 `pure-live.user.js`（55.2 kB）。
-- [x] `pure-live-v5.3.2` 已发布：修复抖音关注状态回弹，README 安装链接已指向新地址。
+- [x] `pure-live-v5.3.2` 已发布：修复抖音关注状态回弹。
+- [x] `pure-live-v5.3.3` 已发布：修复「进入已关注的直播间却显示未关注、点下去变成取关」，状态改以进房接口为准；README 安装链接已指向新地址。
 - [x] `LICENSE` 与原作者、修复贡献者署名完整保留。
-- [x] `@version` 从 `5.2.16` 升到 `5.3.2`（`5.3.0` 为首次发布的功能版本），作为本仓库的独立版本线。
+- [x] `@version` 从 `5.2.16` 升到 `5.3.3`（`5.3.0` 为首次发布的功能版本），作为本仓库的独立版本线。

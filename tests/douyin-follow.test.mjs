@@ -259,3 +259,158 @@ test("抖音：关注状态文案识别", (t) => {
   assert.equal(state("关注8", { loose: true }), "unfollowed", "按钮上的宽松匹配");
   assert.equal(state("已关注", { loose: true }), "followed");
 });
+
+// —— 进入已关注直播间时显示空心的问题 ——
+// 抖音会把「关注」和「已关注」两个按钮同时塞进 DOM，只用一个 CSS 藏起来。
+// 谁被藏起来谁就是假状态：只按选择器取第一个，就会拿到隐藏的「关注」，
+// 显示成空心；点下去反而真的取关（提示「取消关注成功」）。
+
+const FOLLOWED_ROOM = `<div id="HeaderLayout">
+  <div class="nick" data-e2e="live-room-nickname">某主播</div>
+  <button id="hidden" data-e2e="live-followbutton" style="display:none"><span>关注</span></button>
+  <button id="shown" data-e2e="live-followbutton"><span>已关注</span></button>
+</div>`;
+
+test("抖音：已关注直播间里隐藏的「关注」按钮不会被当成真状态", (t) => {
+  const dom = setup(t, FOLLOWED_ROOM);
+  const { document } = dom.window;
+  const found = dom.window.__find(document);
+  assert.equal(found?.state, "followed", "要读可见的那个按钮");
+  assert.equal(found?.element.id, "shown");
+
+  dom.window.__follow.start(document);
+  assert.equal(dom.window.__follow.following.value, true, "进房就该是实心蓝心");
+});
+
+test("抖音：点击的是可见按钮，不会误点被隐藏的那个", (t) => {
+  const dom = setup(t, FOLLOWED_ROOM);
+  const { document } = dom.window;
+  let hiddenClicks = 0;
+  let shownClicks = 0;
+  document.querySelector("#hidden").addEventListener("click", () => (hiddenClicks += 1));
+  document.querySelector("#shown").addEventListener("click", () => (shownClicks += 1));
+
+  dom.window.__follow.start(document);
+  dom.window.__follow.toggle();
+  assert.equal(hiddenClicks, 0, "不能点被隐藏的按钮");
+  assert.equal(shownClicks, 1);
+  assert.equal(dom.window.__follow.following.value, false, "已关注状态下点一下就是取关");
+});
+
+test("抖音：按钮没有 follow 标记时，也优先取可见的那个", (t) => {
+  const dom = setup(
+    t,
+    `<div id="HeaderLayout">
+       <button id="hidden" style="display:none">关注</button>
+       <button id="shown">已关注</button>
+     </div>`,
+  );
+  const found = dom.window.__find(dom.window.document);
+  assert.equal(found?.state, "followed");
+  assert.equal(found?.element.id, "shown");
+});
+
+test("抖音：同一块头部里两个按钮一个说关注一个说已关注时，以已关注为准", (t) => {
+  const dom = setup(
+    t,
+    `<div id="HeaderLayout" style="display:none">
+       <div data-e2e="live-room-nickname">某主播</div>
+       <button id="stale" data-e2e="live-followbutton">关注</button>
+       <button id="real">已关注</button>
+     </div>`,
+  );
+  const found = dom.window.__find(dom.window.document);
+  assert.equal(found?.state, "followed", "宁可显示已关注后点成取关，也别把关注的人显示成没关注");
+  assert.equal(found?.element.id, "real");
+});
+
+test("抖音：头部被脚本 display:none 后，别处可见的「关注」按钮抢不走位置", (t) => {
+  const dom = setup(
+    t,
+    `<div id="HeaderLayout" style="display:none">
+       <button data-e2e="live-followbutton">已关注</button>
+     </div>
+     <div data-e2e="room-recommend">
+       <button id="decoy">关注</button>
+     </div>`,
+  );
+  const found = dom.window.__find(dom.window.document);
+  assert.equal(found?.state, "followed");
+  assert.notEqual(found?.element.id, "decoy", "不能去点推荐位上的关注");
+});
+
+const ROOM_ENTER_API = "/webcast/room/web/enter/?aid=6383";
+
+function roomEnterPayload(followStatus, webRid) {
+  return {
+    status_code: 0,
+    data: {
+      room: { owner: { ...(webRid ? { web_rid: webRid } : {}), follow_info: { follow_status: followStatus } } },
+    },
+  };
+}
+
+test("抖音：预加载的别的直播间的进房数据不会被当成当前主播", async (t) => {
+  const dom = setup(t, HEADER);
+  const { window } = dom;
+  const { document } = window;
+  // 当前地址是 live.douyin.com/123，预加载的是 999 号直播间
+  fakeFetch(window, roomEnterPayload(1, "999"));
+
+  window.__follow.start(document);
+  window.fetch(ROOM_ENTER_API);
+  await sleep(30);
+  assert.equal(window.__follow.following.value, false, "对不上房间号的数据必须丢掉");
+});
+
+test("抖音：进房接口说已关注时，即使页面文案是「关注」也显示实心蓝心", async (t) => {
+  const dom = setup(t, HEADER);
+  const { window } = dom;
+  const { document } = window;
+  fakeFetch(window, roomEnterPayload(1));
+
+  window.__follow.start(document);
+  assert.equal(window.__follow.following.value, false, "刚进来只能读到页面文案");
+
+  // 页面自己请求进房接口（被观测层旁听到）
+  window.fetch(ROOM_ENTER_API);
+  await sleep(30);
+  assert.equal(window.__follow.following.value, true, "服务端说已关注，就得显示已关注");
+
+  // 后面轮询把文案刷回「关注」也不该退回空心
+  window.__follow.sync();
+  assert.equal(window.__follow.following.value, true);
+});
+
+test("抖音：进房接口说未关注时，页面文案是「已关注」也以接口为准", async (t) => {
+  const dom = setup(t, FOLLOWED_ROOM);
+  const { window } = dom;
+  const { document } = window;
+  fakeFetch(window, roomEnterPayload(0));
+
+  window.__follow.start(document);
+  assert.equal(window.__follow.following.value, true);
+
+  window.fetch(ROOM_ENTER_API);
+  await sleep(30);
+  assert.equal(window.__follow.following.value, false);
+});
+
+test("抖音：按钮上读不出文案时，不要把已关注刷成空心", (t) => {
+  const dom = setup(
+    t,
+    `<div id="HeaderLayout">
+       <div data-e2e="live-room-nickname">某主播</div>
+       <button data-e2e="live-followbutton"><span>已关注</span></button>
+     </div>`,
+  );
+  const { window } = dom;
+  const { document } = window;
+  window.__follow.start(document);
+  assert.equal(window.__follow.following.value, true);
+
+  // 抖音把文案换成图标，textContent 变空
+  document.querySelector("button").innerHTML = "<svg></svg>";
+  window.__follow.sync();
+  assert.equal(window.__follow.following.value, true, "读不出来就保持原样，不能猜成未关注");
+});
