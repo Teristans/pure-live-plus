@@ -9,7 +9,7 @@
 
 | 脚本 | 用途 | 版本 | 一键安装 |
 |---|---|---|---|
-| 纯净直播（修改自用版） | 斗鱼 / 虎牙 / B站 / 抖音**直播**精简、自动最高画质 | v5.3.5 | [安装](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v5.3.5/pure-live.user.js) |
+| 纯净直播（修改自用版） | 斗鱼 / 虎牙 / B站 / 抖音**直播**精简、自动最高画质 | v5.3.6 | [安装](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v5.3.6/pure-live.user.js) |
 | [抖音网页版精简版](./douyin-pure/README.md) | 抖音**网页版视频**精简、清晰度智能 1080、悬浮菜单在左上角 | v1.4.0 | [安装](https://github.com/Teristans/pure-live-plus/releases/download/douyin-pure-v1.4.0/douyin-pure.user.js) |
 
 Release 页：https://github.com/Teristans/pure-live-plus/releases
@@ -30,6 +30,44 @@ Release 页：https://github.com/Teristans/pure-live-plus/releases
   - **斗鱼 / B站**：进入直播间后默认选择原生菜单中最高可用画质，主动展开延迟加载的画质菜单，兼容晚于 10 秒完成初始化的播放器；自动选择成功后停止干预，保留用户后续手动选择；关闭开关时不操作菜单。
   - **虎牙**：按 `iSortValue` 选择最高画质，解锁扫码限制（status=4），保留原画 `iBitRate=0`，通过 `unsafeWindow` 使用页面自身 jQuery；画质处理提前启动，避免播放器容器延迟创建时中断。
 - 构建配置固定 `vite` / `vitest` 版本，恢复正常生产构建。
+
+### v5.3.6
+
+**斗鱼改为先让斗鱼自己屏蔽：自动勾选播放器设置里的 7 个开关**（`src/site/douyu/gift.js`）
+
+按文案删 DOM 总有漏网——送礼播报的句式在变，礼物特效又是 canvas / 异步插入，过滤赶不上。
+斗鱼播放器其实自带一组屏蔽开关（控制栏「弹幕设置」面板里），勾上之后由斗鱼自己在**数据层**过滤，
+比事后删节点彻底得多。现在脚本进房就把它们全勾上：
+
+| 开关 | 挡掉的东西 |
+|---|---|
+| 屏蔽全部礼物 | 送礼信息、福袋口令播报 |
+| 屏蔽消息通知 | 系统 / 福袋中奖通知 |
+| 屏蔽视频广播 | 全站广播 |
+| 屏蔽小礼物 | 免费小礼物刷屏 |
+| 屏蔽进场特效 | 礼物特效的主要来源 |
+| 屏蔽礼物音效 | 礼物音效 |
+| 屏蔽弹幕皮肤 | 贵族 / 礼物弹幕皮肤 |
+
+实现上的几个要点：
+
+- **不用打开面板**：这 7 项即使面板没展开也在 DOM 里，直接点 `label` 就生效，
+  用户看不到面板闪动（实测确认）。
+- **只能按文案定位**：类名是哈希（`shieldSettingItem-4b3b84`、`checked-13adb7`），
+  所以先用 `label` 文案精确匹配，再要求所在行有勾选框 `svg`。
+- **状态判断要当心**：未勾是 `unchecked-b96102`，已勾是 `checked-13adb7`，
+  而 `unchecked` 里也含 "checked" 子串，必须先排除 `unchecked` 再认 `checked`，否则会把没勾的当成勾上的。
+- **幂等 + 冷却**：已勾的跳过；刚点过的 15 秒内不再点。勾不上时（斗鱼拒绝、面板重渲染）
+  宁可这次没勾上，也不能反复点——反复点会把它点成未勾，比不勾更糟。
+- 设置存在 `localStorage["chat-shield-config"]`（`allGift / message / videoBroadcast / smallgift /
+  userEnter / audioGift / barrageSkin`），跨房间持久，所以日常进房基本是「读一遍状态、0 次点击」。
+- 按文案删 DOM 的逻辑原样保留，作为兜底：斗鱼改版把开关改名或挪走时，仍能按文案过滤。
+
+验证：headless Edge 注入构建产物到真实直播间（`www.douyu.com/9999`），注入前 7 项全未勾，
+6 秒后 7 项全部 `checked-13adb7`、`localStorage` 里对应字段全部置 1、弹幕区无送礼/福袋残留，
+控制台输出 `[pure-live] 斗鱼播放器屏蔽项已勾选 7`（勾齐后定时器收工，不会一直跑）。
+测试新增 5 项（自动勾选、已勾不重复点、冷却期不反复点、`unchecked` 误判、面板未渲染），
+斗鱼礼物模块共 11 项，全量 82 项通过，lint 0 error。
 
 ### v5.3.5
 
@@ -137,6 +175,7 @@ v5.3.3 的做法是「旁听页面自己的进房请求」，实测不成立：�
 
 ### 🦈斗鱼（douyu）
 
+- 自动勾选播放器「弹幕设置」里的 7 个屏蔽开关（屏蔽全部礼物 / 消息通知 / 视频广播 / 小礼物 / 进场特效 / 礼物音效 / 弹幕皮肤），由斗鱼自己过滤，特效和福袋口令一并覆盖
 - 屏蔽所有送礼物信息（弹幕/聊天里的「送出 xxx」）
 - 屏蔽礼物特效、礼物飘屏、礼物面板与礼物按钮
 - 屏蔽福袋 / 红包 / 抽奖入口
@@ -165,7 +204,7 @@ pnpm run test:bundle          # 成品脚本测试（6 项）
 pnpm run test:douyin-quality  # 抖音画质测试（7 项）
 pnpm run test:douyin-follow   # 抖音关注按钮测试（24 项）
 pnpm run test:douyin-feed     # 抖音推荐流按钮测试（7 项）
-pnpm run test:douyu-gift      # 斗鱼礼物/福袋屏蔽测试（6 项）
+pnpm run test:douyu-gift      # 斗鱼礼物/福袋屏蔽测试（11 项）
 pnpm run test:all             # 以上全部
 ```
 
@@ -175,8 +214,8 @@ pnpm run test:all             # 以上全部
 
 **纯净直播（本脚本）**
 
-- 一键安装：[pure-live.user.js v5.3.5](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v5.3.5/pure-live.user.js)
-- Release 说明：[pure-live-v5.3.5](https://github.com/Teristans/pure-live-plus/releases/tag/pure-live-v5.3.5)
+- 一键安装：[pure-live.user.js v5.3.6](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v5.3.6/pure-live.user.js)
+- Release 说明：[pure-live-v5.3.6](https://github.com/Teristans/pure-live-plus/releases/tag/pure-live-v5.3.6)
 - 或自行构建：`pnpm install && pnpm build` 后导入 `dist/pure-live.user.js`
 - 安装后请只启用一份脚本（原版或本修改版二选一），避免重复执行
 
@@ -193,7 +232,7 @@ pnpm run test:all             # 以上全部
 
 - `@namespace` / `@homepage` / `@source`：`https://github.com/Teristans/pure-live-plus`
 - `@name`：纯净直播（pure live）修改自用版
-- `@version`：`5.3.5`
+- `@version`：`5.3.6`
 - `@license`：GPL-3.0-or-later
 
 当前发布状态：
@@ -204,5 +243,6 @@ pnpm run test:all             # 以上全部
 - [x] `pure-live-v5.3.3` 已发布：首次尝试用进房接口纠正初始状态（未解决，见 v5.3.4）。
 - [x] `pure-live-v5.3.4` 已发布：改为脚本自己请求进房接口取「我→主播」的 follow_status，修好初始状态。
 - [x] `pure-live-v5.3.5` 已发布：抖音面板新增「下一个推荐直播间」「回推荐流首页」两个按钮；修复子组件图标比同级按钮高 1px 的对齐问题。
+- [x] `pure-live-v5.3.6` 已发布：斗鱼改为自动勾选播放器设置里的 7 个屏蔽开关，礼物特效 / 福袋口令由斗鱼自己在数据层过滤，按文案删 DOM 降为兜底。
 - [x] `LICENSE` 与原作者、修复贡献者署名完整保留。
-- [x] `@version` 从 `5.2.16` 升到 `5.3.5`（`5.3.0` 为首次发布的功能版本），作为本仓库的独立版本线。
+- [x] `@version` 从 `5.2.16` 升到 `5.3.6`（`5.3.0` 为首次发布的功能版本），作为本仓库的独立版本线。
