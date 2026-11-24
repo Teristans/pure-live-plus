@@ -9,7 +9,7 @@
 
 | 脚本 | 用途 | 版本 | 一键安装 |
 |---|---|---|---|
-| 纯净直播（修改自用版） | 斗鱼 / 虎牙 / B站 / 抖音**直播**精简、自动最高画质 | v5.3.0（已合入 master，待发布） | [安装 v5.2.16](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v5.2.16/pure-live.user.js) |
+| 纯净直播（修改自用版） | 斗鱼 / 虎牙 / B站 / 抖音**直播**精简、自动最高画质 | v5.3.0 | [安装](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v5.3.0/pure-live.user.js) |
 | [抖音网页版精简版](./douyin-pure/README.md) | 抖音**网页版视频**精简、清晰度智能 1080、悬浮菜单在左上角 | v1.4.0 | [安装](https://github.com/Teristans/pure-live-plus/releases/download/douyin-pure-v1.4.0/douyin-pure.user.js) |
 
 Release 页：https://github.com/Teristans/pure-live-plus/releases
@@ -97,9 +97,9 @@ pnpm run test:all             # 以上全部
 
 **纯净直播（本脚本）**
 
-- 一键安装（当前已发布版本）：[pure-live.user.js v5.2.16](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v5.2.16/pure-live.user.js)
-- v5.3.0（本次三项修复）已合入 `master`，尚未发布 Release：`pnpm install && pnpm build` 后导入 `dist/pure-live.user.js` 即可使用
-- 发布 Release 后把上面两行换成 `pure-live-v5.3.0` 的下载地址
+- 一键安装：[pure-live.user.js v5.3.0](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v5.3.0/pure-live.user.js)
+- Release 说明：[pure-live-v5.3.0](https://github.com/Teristans/pure-live-plus/releases/tag/pure-live-v5.3.0)
+- 或自行构建：`pnpm install && pnpm build` 后导入 `dist/pure-live.user.js`
 - 安装后请只启用一份脚本（原版或本修改版二选一），避免重复执行
 
 **抖音网页版精简版**
@@ -121,6 +121,6 @@ pnpm run test:all             # 以上全部
 当前发布状态：
 
 - [x] 已发布 Release：`pure-live-v5.2.16`（本脚本）、`douyin-pure-v1.4.0`（抖音脚本），下载入口已补入 README。
-- [ ] `pure-live-v5.3.0` 待发布：`pnpm build` 后把 `dist/pure-live.user.js` 传到 tag `pure-live-v5.3.0` 的 Release，再把本文档里的安装链接改成新地址。
+- [x] `pure-live-v5.3.0` 已发布：tag `pure-live-v5.3.0` + Release 资产 `pure-live.user.js`（55.2 kB），README 安装链接已指向新地址。
 - [x] `LICENSE` 与原作者、修复贡献者署名完整保留。
 - [x] `@version` 从 `5.2.16` 升到 `5.3.0`，作为本仓库的独立版本线。
