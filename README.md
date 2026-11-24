@@ -10,7 +10,7 @@
 | 脚本 | 用途 | 版本 | 一键安装 |
 |---|---|---|---|
 | 纯净直播（修改自用版） | 斗鱼 / 虎牙 / B站 / 抖音**直播**精简、自动最高画质 | v5.3.7 | [安装](https://github.com/Teristans/pure-live-plus/releases/download/pure-live-v5.3.7/pure-live.user.js) |
-| [抖音网页版精简版](./douyin-pure/README.md) | 抖音**网页版视频**精简、清晰度智能 1080、悬浮菜单在左上角 | v1.4.0 | [安装](https://github.com/Teristans/pure-live-plus/releases/download/douyin-pure-v1.4.0/douyin-pure.user.js) |
+| [抖音网页版精简版](https://github.com/Teristans/douyin-pure) | 抖音**网页版视频**精简、清晰度智能 1080、搜索与频道收在右侧竖排图标列 | v6.0.0 | [安装](https://github.com/Teristans/douyin-pure/releases/download/douyin-pure-v6.0.0/douyin-pure.user.js) |
 
 Release 页：https://github.com/Teristans/pure-live-plus/releases
 
@@ -247,12 +247,12 @@ pnpm run test:all             # 以上全部
 - 或自行构建：`pnpm install && pnpm build` 后导入 `dist/pure-live.user.js`
 - 安装后请只启用一份脚本（原版或本修改版二选一），避免重复执行
 
-**抖音网页版精简版**
+**抖音网页版精简版（已拆分为独立仓库）**
 
-- 一键安装：[douyin-pure.user.js v1.4.0](https://github.com/Teristans/pure-live-plus/releases/download/douyin-pure-v1.4.0/douyin-pure.user.js)
-- 详细说明见 [douyin-pure/README.md](./douyin-pure/README.md)
+- 仓库：https://github.com/Teristans/douyin-pure
+- 一键安装：[douyin-pure.user.js v6.0.0](https://github.com/Teristans/douyin-pure/releases/download/douyin-pure-v6.0.0/douyin-pure.user.js)
 
-两者互相独立，可同时安装。
+两者互相独立、各自维护、可同时安装。抖音网页版的代码已从本仓库移出，本仓库只保留直播站脚本。
 
 ## 发布状态
 
@@ -265,7 +265,8 @@ pnpm run test:all             # 以上全部
 
 当前发布状态：
 
-- [x] 已发布 Release：`pure-live-v5.2.16`（本脚本）、`douyin-pure-v1.4.0`（抖音脚本），下载入口已补入 README。
+- [x] 已发布 Release：`pure-live-v5.2.16`（本脚本）。
+- [x] `douyin-pure` 已拆分为独立仓库 https://github.com/Teristans/douyin-pure ，本仓库不再包含其源码与发布。
 - [x] `pure-live-v5.3.0` 已发布：tag `pure-live-v5.3.0` + Release 资产 `pure-live.user.js`（55.2 kB）。
 - [x] `pure-live-v5.3.2` 已发布：修复抖音关注状态回弹。
 - [x] `pure-live-v5.3.3` 已发布：首次尝试用进房接口纠正初始状态（未解决，见 v5.3.4）。

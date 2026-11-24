@@ -19,7 +19,6 @@
     "test:douyin-feed": "node --test tests/douyin-feed.test.mjs",
     "test:douyu-gift": "node --test tests/douyu-gift.test.mjs",
     "test:all": "node --test \"tests/*.test.mjs\"",
-    "test:douyin-pure": "node --test douyin-pure/tests/pure.test.mjs",
     "dev": "vp dev",
     "build": "vp build",
     "preview": "vp preview",
