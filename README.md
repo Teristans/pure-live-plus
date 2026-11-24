@@ -3,6 +3,13 @@
 > 自用修改版：修复了「自动切换最高画质」失效问题，保留原作者信息与 GPL 许可。
 > 本仓库：https://github.com/Teristans/pure-live-plus
 
+## 仓库包含的脚本
+
+| 脚本 | 用途 | 安装 |
+|---|---|---|
+| 纯净直播（修改自用版） | 斗鱼 / 虎牙 / B站 / 抖音**直播**精简、自动最高画质 | 见下文「[安装与使用](#安装与使用)」 |
+| [抖音网页版精简版](./douyin-pure/README.md) | 抖音**网页版视频**精简、清晰度智能 1080、悬浮菜单在左上角 | [一键安装 v1.4.0](https://github.com/Teristans/pure-live-plus/releases/download/douyin-pure-v1.4.0/douyin-pure.user.js) |
+
 ## 作者与来源
 
 本版本基于 **[ljezio](https://github.com/ljezio)** 开发的 **[pure-live](https://github.com/ljezio/pure-live)**，并合入了社区贡献的画质兼容修复。原作者已声明可自由 fork 自用修改。

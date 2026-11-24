@@ -4,7 +4,20 @@
 
 ## 安装
 
-把 `douyin-pure.user.js` 拖进 ScriptCat / Tampermonkey 即可，单文件免构建。
+**方式一：一键安装（推荐）**
+
+1. 先安装 [ScriptCat](https://scriptcat.org/) 或 [Tampermonkey](https://www.tampermonkey.net/)
+2. 点击安装 → [douyin-pure.user.js v1.4.0](https://github.com/Teristans/pure-live-plus/releases/download/douyin-pure-v1.4.0/douyin-pure.user.js)
+
+**方式二：从仓库文件安装**
+
+下载本目录下的 [`douyin-pure.user.js`](./douyin-pure.user.js)，拖进 ScriptCat / Tampermonkey 即可。单文件免构建。
+
+> 安装后如遇旧版本行为，请先在脚本管理器里删除旧版再重装。脚本管理器不会自动跟进 Release 更新，新版需手动重新导入。
+
+## 版本
+
+当前 **v1.4.0**（清晰度智能 1080 + 悬浮菜单移至左上角），对应 [Release](https://github.com/Teristans/pure-live-plus/releases/tag/douyin-pure-v1.4.0)。
 
 ## 功能
 
