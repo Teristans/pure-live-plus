@@ -47,7 +47,7 @@ Release 页：https://github.com/Teristans/pure-live-plus/releases
    - 只认完整文案，`关注 8` 这种粉丝数统计、导航栏指向「关注页」的入口、脚本自己的 UI 都会被排除，不会误点。
    - 找不到原生按钮时按钮不显示，不会留一个点不动的死按钮。
 
-验证：源码/成品测试共 52 项通过（新增抖音画质 7 项、抖音关注 6 项、斗鱼礼物 6 项），生产构建通过。
+验证：源码/成品测试共 53 项通过（新增抖音画质 7 项、抖音关注 7 项、斗鱼礼物 6 项），生产构建通过。
 
 ## 功能
 
@@ -85,7 +85,7 @@ pnpm run test:quality         # 斗鱼 / B站画质测试（14 项）
 pnpm run test:huya            # 虎牙画质测试（13 项）
 pnpm run test:bundle          # 成品脚本测试（6 项）
 pnpm run test:douyin-quality  # 抖音画质测试（7 项）
-pnpm run test:douyin-follow   # 抖音关注按钮测试（6 项）
+pnpm run test:douyin-follow   # 抖音关注按钮测试（7 项）
 pnpm run test:douyu-gift      # 斗鱼礼物/福袋屏蔽测试（6 项）
 pnpm run test:all             # 以上全部
 ```

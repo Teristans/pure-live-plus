@@ -80,7 +80,10 @@ function isExcluded(el) {
 function resolveClickable(el) {
   if (!el) return null;
   if (typeof el.matches === "function" && el.matches('button,[role="button"],a')) return el;
-  return el.closest?.('button,[role="button"],a') || el;
+  // 命中的可能是包一层的容器，往上找到按钮，找不到就往下找
+  return (
+    el.closest?.('button,[role="button"],a') || el.querySelector?.('button,[role="button"],a') || el
+  );
 }
 
 function searchScope(scope) {

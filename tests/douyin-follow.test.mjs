@@ -94,6 +94,17 @@ test("抖音：按钮文案带尾部图标/数字（关注8）也能认出来，
   assert.equal(found?.element.getAttribute("data-e2e"), "live-room-follow-btn");
 });
 
+test("抖音：命中包裹容器时，点到里层的真实按钮", (t) => {
+  const dom = setup(
+    t,
+    `<div id="HeaderLayout">
+       <div data-e2e="live-room-follow-wrap"><button id="real">关注</button></div>
+     </div>`,
+  );
+  const found = dom.window.__find(dom.window.document);
+  assert.equal(found?.element.id, "real", "点不到按钮就等于没做功能");
+});
+
 test("抖音：关注状态文案识别", (t) => {
   const dom = setup(t, "<body></body>");
   const state = dom.window.__state;
